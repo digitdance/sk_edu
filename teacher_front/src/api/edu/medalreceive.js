@@ -1,0 +1,58 @@
+import request from '@/router/axios';
+
+export const getList = (current, size, params) => {
+  return request({
+    url: '/api/edu/medal/receives',
+    method: 'get',
+    params: {
+      ...params,
+      current,
+      size,
+    }
+  })
+}
+
+export const getDetail = (id) => {
+  return request({
+    url: '/api/edu/medal/detail',
+    method: 'get',
+    params: {
+      id
+    }
+  })
+}
+
+export const remove = (ids) => {
+  return request({
+    url: '/api/edu/medal/remove',
+    method: 'post',
+    params: {
+      ids,
+    }
+  })
+}
+
+export const add = (row) => {
+  return request({
+    url: '/api/edu/medal/submit',
+    method: 'post',
+    data: row
+  })
+}
+
+export const reply = (row) => {
+  return request({
+    url: '/api/edu/medal/reply',
+    method: 'post',
+    data: row
+  })
+}
+
+export const update = (row) => {
+  return request({
+    url: '/api/edu/medal/submit',
+    method: 'post',
+    data: row
+  })
+}
+

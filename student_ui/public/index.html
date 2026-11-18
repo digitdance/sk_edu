@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TradeNest - 数智营销产业学院教育平台</title>
+
+    <link rel="stylesheet" href="<%= BASE_URL %>static/css/moco.min.css"/>
+    <link rel="stylesheet" href="<%= BASE_URL %>static/css/base.css"/>
+    <link rel="stylesheet" href="<%= BASE_URL %>static/css/common/pic-viewer-less.css"/>
+    <link rel="stylesheet" href="<%= BASE_URL %>static/css/poplogin-less.css"/>
+    <link rel="stylesheet" href="<%= BASE_URL %>static/css/vue-layer.css"/>
+    <link rel="stylesheet" href="<%= BASE_URL %>static/css/common.css"/>
+    <link rel="stylesheet"
+      href="//at.alicdn.com/t/font_2607939_lo5kqrispp9.css"/>
+
+
+    <!-- 引入图标库 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- 引入Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 自定义配置：现代科技风格 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#0F172A',       // 主色：深蓝黑
+                        secondary: '#3B82F6',     // 辅助色：蓝色
+                        accent: '#6366F1',        // 强调色：靛蓝
+                        success: '#10B981',       // 成功色：绿色
+                        warning: '#F59E0B',       // 警告色：橙色
+                        danger: '#EF4444',        // 危险色：红色
+                        light: '#F8FAFC',         // 浅色背景
+                        dark: '#1E293B',          // 深色背景
+                        gray: '#94A3B8',          // 中性灰色
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'PingFang SC', 'Microsoft YaHei', 'sans-serif']
+                    },
+                    boxShadow: {
+                        'soft': '0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01)',
+                        'hover': '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                        'glow': '0 0 20px rgba(59, 130, 246, 0.3)',
+                    },
+                    animation: {
+                        'fade-in': 'fadeIn 0.5s ease-in-out',
+                        'slide-up': 'slideUp 0.5s ease-out',
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        },
+                        slideUp: {
+                            '0%': { transform: 'translateY(20px)', opacity: '0' },
+                            '100%': { transform: 'translateY(0)', opacity: '1' },
+                        },
+                    },
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto { content-visibility: auto; }
+            .card-hover { @apply transition-all duration-300 hover:shadow-hover hover:-translate-y-1; }
+            .btn-primary { @apply bg-secondary text-white px-6 py-3 rounded-lg font-medium transition-all hover:bg-secondary/90 active:scale-95 hover:shadow-glow; }
+            .btn-secondary { @apply bg-white text-secondary border border-secondary px-6 py-3 rounded-lg font-medium transition-all hover:bg-secondary/5 active:scale-95; }
+            .btn-accent { @apply bg-accent text-white px-6 py-3 rounded-lg font-medium transition-all hover:bg-accent/90 active:scale-95 hover:shadow-glow; }
+            .section { @apply max-w-7xl mx-auto px-4 py-12 md:py-20; }
+            .text-gradient { @apply bg-clip-text text-transparent bg-gradient-to-r from-secondary to-accent; }
+            .bg-gradient { @apply bg-gradient-to-r from-secondary to-accent; }
+            .card-gradient { @apply bg-gradient-to-br from-white to-light; }
+            .nav-link { @apply font-medium text-gray hover:text-secondary transition-colors duration-300; }
+            .nav-link.active { @apply text-secondary border-b-2 border-secondary; }
+            html { scroll-behavior: smooth; }
+        }
+    </style>
+
+
+<% for (var i in htmlWebpackPlugin.options.cdn &&
+htmlWebpackPlugin.options.cdn.js) { %>
+<script src="<%= BASE_URL %><%=
+    htmlWebpackPlugin.options.cdn.js[i] %>" rel="preload" ></script>
+  <% } %>
+    <!-- 百家云播放器引入 -->
+    <link
+      href="//live-cdn.baijiayun.com/www-video-jssdk/dep/videojs/0.0.6/dist/videojs.css"
+      rel="stylesheet">
+
+
+
+      <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto { content-visibility: auto; }
+            .card-hover { @apply transition-all duration-300 hover:shadow-hover hover:-translate-y-1; }
+            .btn-primary { @apply bg-secondary text-white px-6 py-3 rounded-lg font-medium transition-all hover:bg-secondary/90 active:scale-95 hover:shadow-glow; }
+            .btn-secondary { @apply bg-white text-secondary border border-secondary px-6 py-3 rounded-lg font-medium transition-all hover:bg-secondary/5 active:scale-95; }
+            .btn-accent { @apply bg-accent text-white px-6 py-3 rounded-lg font-medium transition-all hover:bg-accent/90 active:scale-95 hover:shadow-glow; }
+            .section { @apply max-w-7xl mx-auto px-4 py-12 md:py-16; }
+            .text-gradient { @apply bg-clip-text text-transparent bg-gradient-to-r from-secondary to-accent; }
+            .bg-gradient { @apply bg-gradient-to-r from-secondary to-accent; }
+            .card-gradient { @apply bg-gradient-to-br from-white to-light; }
+            .nav-link { @apply font-medium text-gray hover:text-secondary transition-colors duration-300; }
+            .nav-link.active { @apply text-secondary border-b-2 border-secondary; }
+            .course-card { @apply bg-white rounded-2xl overflow-hidden shadow-soft card-hover; }
+            .course-image { @apply w-[320px] h-[400px] mx-auto overflow-hidden relative; }
+            .course-tag { @apply text-xs bg-secondary/10 text-secondary px-3 py-1 rounded-full mb-4 inline-block; }
+            .btn-learn { @apply bg-secondary text-white px-4 py-2 rounded-lg text-sm font-medium transition-all hover:bg-secondary/90 active:scale-95 hover:shadow-glow; }
+            html { scroll-behavior: smooth; }
+        }
+    </style>
+
+
+    <script src="http://code.jquery.com/jquery-1.9.0.min.js"></script>
+    <script
+      src="//live-cdn.baijiayun.com/www-video-jssdk/dep/videojs/0.0.6/dist/videojs.js"></script>
+    <script
+      src="//live-cdn.baijiayun.com/www-video-jssdk/0.0.7/bjcPlayer/index.js"></script>
+      <script>
+
+
+ // 选项卡功能
+ const tabDataPreview = document.getElementById('tab-data-preview');
+    const tabScore = document.getElementById('tab-score');
+    const dataPreview = document.getElementById('data-preview');
+    const progressModules = document.getElementById('progress-modules');
+    const scoreModule = document.getElementById('score-module');
+
+    // 默认隐藏综合得分模块
+    scoreModule.style.display = 'none';
+
+    // 数据预览选项卡点击事件
+    tabDataPreview.addEventListener('click', () => {
+        // 显示数据预览相关内容
+        dataPreview.style.display = 'block';
+        progressModules.style.display = 'grid';
+        scoreModule.style.display = 'none';
+        
+        // 更新选项卡样式
+        tabDataPreview.classList.add('text-secondary', 'border-b-2', 'border-secondary');
+        tabDataPreview.classList.remove('text-gray');
+        tabScore.classList.add('text-gray');
+        tabScore.classList.remove('text-secondary', 'border-b-2', 'border-secondary');
+    });
+
+    // 综合得分选项卡点击事件
+    tabScore.addEventListener('click', () => {
+        // 显示综合得分相关内容
+        dataPreview.style.display = 'none';
+        progressModules.style.display = 'none';
+        scoreModule.style.display = 'block';
+        
+        // 更新选项卡样式
+        tabScore.classList.add('text-secondary', 'border-b-2', 'border-secondary');
+        tabScore.classList.remove('text-gray');
+        tabDataPreview.classList.add('text-gray');
+        tabDataPreview.classList.remove('text-secondary', 'border-b-2', 'border-secondary');
+    });
+
+
+      </script>
+</head>
+                <body>
+                  <div id="app"></div>
+                </body>
+              </html>
