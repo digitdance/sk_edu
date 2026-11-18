@@ -106,8 +106,8 @@ oss:
   #secret-key: 123
   bucket-name: labure-1259817162
 
-  secret-id: AKIDZuEG4MoEsfJP9992ku62h6KK44FdmcXC
-  secret-key: SgsaS5RjjiRv85rqbZXH9S9ZiEKbcMvH
+  secret-id: 
+  secret-key: 
   token: labure-1259817162
   region: ap-chengdu
   bucket: labure-1259817162
