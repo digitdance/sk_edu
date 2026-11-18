@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.springcrazy.modules.exam.mapper.ExampaperMapper">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="exampaperResultMap" type="org.springcrazy.modules.exam.entity.Exampaper">
+        <id column="id" property="id"/>
+        <result column="subjectId" property="subjectId"/>
+        <result column="name" property="name"/>
+        <result column="info" property="info"/>
+        <result column="replyTime" property="replyTime"/>
+        <result column="addTime" property="addTime"/>
+        <result column="status" property="status"/>
+        <result column="level" property="level"/>
+        <result column="joinNum" property="joinNum"/>
+        <result column="avgScore" property="avgScore"/>
+        <result column="type" property="type"/>
+        <result column="qstCount" property="qstCount"/>
+        <result column="updateTime" property="updateTime"/>
+        <result column="score" property="score"/>
+        <result column="passRate" property="passRate"/>
+        <result column="assemblyMode" property="assemblyMode"/>
+        <result column="questionsType" property="questionsType"/>
+        <result column="passNum" property="passNum"/>
+        <result column="actualJoinNum" property="actualJoinNum"/>
+        <result column="sortNum" property="sortNum"/>
+        <result column="middleId" property="middleId"/>
+        <result column="middleName" property="middleName"/>
+        <result column="middleClazz" property="middleClazz"/>
+        <result column="clazz_name" property="clazzName"/>
+        <result column="pigai_status" property="pigaiStatus"/>
+        <result column="sum_score" property="sumScore"/>
+        <result column="avg" property="avg"/>
+
+        <result column="has_publish_score" property="hasPublishScore"/>
+        <result column="exam_num" property="examNum"/>
+        <result column="pigai_num" property="pigaiNum"/>
+
+
+    </resultMap>
+
+
+    <select id="selectExampaperPage" resultMap="exampaperResultMap">
+        select * from exam_exampaper where is_deleted = 0
+    </select>
+
+    <select id="selectClazzExamList" resultMap="exampaperResultMap">
+        select edu_course_package_exam.has_publish_score,edu_course_package_exam.id as middleId,edu_course_package_exam.custom_exampaper_name as middleName,edu_course_package_exam.clazz_id as middleClazz
+        ,exam_exampaper.*,edu_course.course_name as clazz_name
+        <if test="coursePackageExam.userIds !=null and coursePackageExam.userIds!='' ">
+            , (select count(1) from exam_exampaper_record where exam_exampaper_record.middle_id=edu_course_package_exam.id
+            and exam_exampaper_record.user_id in
+            <foreach item="item" index="index" collection="coursePackageExam.userIds.split(',')"  open="(" separator="," close=")">
+                #{item}
+            </foreach>) as exam_num
+        </if>
+
+        <if test="coursePackageExam.clazzId !=null and coursePackageExam.clazzId!='' ">
+            , (select count(1) from exam_exampaper_record where exam_exampaper_record.middle_id=edu_course_package_exam.id
+            and  exam_exampaper_record.clazz_id=#{coursePackageExam.clazzId}) as exam_num
+            , (select count(1) from exam_exampaper_record where exam_exampaper_record.middle_id=edu_course_package_exam.id
+            and exam_exampaper_record.clazz_id=#{coursePackageExam.clazzId} and pigai_status=1)   as pigai_num
+
+            , (select avg(user_score) from exam_exampaper_record where exam_exampaper_record.middle_id=edu_course_package_exam.id
+            and exam_exampaper_record.clazz_id=#{coursePackageExam.clazzId} and pigai_status=1)   as avg
+
+            , (select sum(qst_score) from exam_exampaper_record where exam_exampaper_record.middle_id=edu_course_package_exam.id
+            and exam_exampaper_record.clazz_id=#{coursePackageExam.clazzId} and pigai_status=1)   as sum_score
+        </if>
+
+<!--        , (select count(1) from exam_exampaper_record where exam_exampaper_record.middle_id=edu_course_package_exam.id-->
+<!--         as exam_num-->
+<!--        , (select count(1) from exam_exampaper_record where exam_exampaper_record.middle_id=edu_course_package_exam.id-->
+<!--         and pigai_status=1  as pigai_num-->
+<!--        , (select avg(qst_score) from exam_exampaper_record where exam_exampaper_record.middle_id=edu_course_package_exam.id-->
+<!--        and pigai_status=1  as avg_score-->
+<!--        , (select sum(qst_score) from exam_exampaper_record where exam_exampaper_record.middle_id=edu_course_package_exam.id-->
+<!--        and pigai_status=1  as sum_score-->
+
+        from edu_course_package_exam
+        left join exam_exampaper on edu_course_package_exam.exampaper_id = exam_exampaper.id
+        left join edu_course on edu_course_package_exam.clazz_id = edu_course.id
+        <where>
+            1=1
+            <if test="coursePackageExam.clazzId !=null and coursePackageExam.clazzId !='' ">
+                and edu_course_package_exam.clazz_id = #{coursePackageExam.clazzId}
+            </if>
+            <if test="coursePackageExam.examName !=null and coursePackageExam.examName !='' ">
+                and exam_exampaper.name like concat('%',#{coursePackageExam.examName},'%')
+            </if>
+            <if test="coursePackageExam.examType !=null and coursePackageExam.examType !='' ">
+                and exam_exampaper.type=#{coursePackageExam.examType}
+            </if>
+            <if test="coursePackageExam.clazzIds !=null and coursePackageExam.clazzIds!='' ">
+                and edu_course_package_exam.clazz_id in
+                <foreach item="item" index="index" collection="coursePackageExam.clazzIds.split(',')" open="(" separator="," close=")">
+                    #{item}
+                </foreach>
+            </if>
+        </where>
+        order by edu_course_package_exam.sort desc
+    </select>
+
+
+    <select id="selectCourseExamList" resultMap="exampaperResultMap">
+        select edu_course_package_exam.id as middleId,edu_course_package_exam.custom_exampaper_name as middleName,edu_course_package_exam.clazz_id as middleCourse
+        ,exam_exampaper.*,edu_course.course_name as courseName,edu_course.course_name as clazz_name
+        <if test="coursePackageExam.userIds !=null and coursePackageExam.userIds!='' ">
+            , (select count(1) from exam_exampaper_record where exam_exampaper_record.middle_id=edu_course_package_exam.id
+            and exam_exampaper_record.user_id in
+            <foreach item="item" index="index" collection="coursePackageExam.userIds.split(',')"  open="(" separator="," close=")">
+                #{item}
+            </foreach>) as exam_num
+        </if>
+        from edu_course_package_exam
+        left join exam_exampaper on edu_course_package_exam.exampaper_id = exam_exampaper.id
+        left join edu_course on edu_course_package_exam.clazz_id = edu_course.id
+        <where>
+            1=1
+            <if test="coursePackageExam.courseId !=null and coursePackageExam.courseId !='' ">
+                and edu_course_package_exam.course_id = #{coursePackageExam.courseId}
+            </if>
+            <if test="coursePackageExam.examName !=null and coursePackageExam.examName !='' ">
+                and exam_exampaper.name like concat('%',#{coursePackageExam.examName},'%')
+            </if>
+            <if test="coursePackageExam.examType !=null and coursePackageExam.examType !='' ">
+                and exam_exampaper.type=#{coursePackageExam.examType}
+            </if>
+            <if test="coursePackageExam.clazzId !=null and coursePackageExam.clazzId !='' ">
+                and edu_course_package_exam.clazz_id=#{coursePackageExam.clazzId}
+            </if>
+            <if test="coursePackageExam.courseId !=null and coursePackageExam.courseId!='' ">
+                and edu_course_package_exam.course_id in
+                <foreach item="item" index="index" collection="coursePackageExam.courseIds.split(',')" open="(" separator="," close=")">
+                    #{item}
+                </foreach>
+            </if>
+        </where>
+        order by edu_course_package_exam.sort desc
+    </select>
+
+</mapper>

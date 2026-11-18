@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.springcrazy.modules.edu.mapper.CoursePackageExamMapper">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="coursePackageExamResultMap" type="org.springcrazy.modules.edu.entity.CoursePackageExam">
+        <id column="id" property="id"/>
+        <result column="clazz_id" property="clazzId"/>
+        <result column="course_id" property="courseId"/>
+        <result column="sort" property="sort"/>
+        <result column="status" property="status"/>
+
+    </resultMap>
+
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="coursePackageExamVOResultMap" type="org.springcrazy.modules.edu.vo.CoursePackageExamVO">
+        <id column="id" property="id"/>
+        <result column="clazz_id" property="clazzId"/>
+        <result column="exampaper_id" property="exampaperId"/>
+        <result column="sort" property="sort"/>
+        <result column="exam_name" property="examName"/>
+        <result column="status" property="status"/>
+        <result column="title" property="title"/>
+        <result column="exam_num" property="examNum"/>
+        <result column="exam_type" property="examType"/>
+        <result column="custom_exampaper_name" property="customExampaperName"/>
+        <result column="exam_subject_id" property="examSubjectId"/>
+
+        <result column="course_id" property="courseId"/>
+        <result column="kpoint_id" property="kpointId"/>
+        <result column="exampaper_is_delete" property="exampaperIsDelete"/>
+        <result column="course_is_delete" property="courseIsDelete"/>
+        <result column="kpoint_is_delete" property="kpointIsDelete"/>
+
+    </resultMap>
+
+
+<!--    <select id="getcoursepepo" resultType="java.lang.String">-->
+<!--        SELECT-->
+<!--        DISTINCT user_id),student-->
+<!--        FROM-->
+<!--        edu_trxorder_detail-->
+<!--        left join edu_student student-->
+<!--        on-->
+<!--        <where>-->
+<!--            edu_trxorder_detail.course_id = #{courseId}-->
+<!--            AND auth_status=2-->
+<!--        </where>-->
+<!--    </select>-->
+
+<!--    <select id="">-->
+
+<!--        select distinct(edu_course_studyhistory.user_id),-->
+<!--        student.-->
+<!--        from edu_course_studyhistory-->
+<!--        left join edu_student student-->
+<!--        where course_id= #{courseId}-->
+
+<!--    </select>-->
+
+    <select id="selectCoursePackageExamPage" resultMap="coursePackageExamVOResultMap">
+        select edu_course_package_exam.id as id,
+        edu_course_package_exam.clazz_id,
+        edu_course_package_exam.course_id,
+        edu_course.is_deleted as course_is_delete,
+        edu_course_package_exam.kpoint_id,
+        edu_course_kpoint.is_deleted as kpoint_is_delete,
+        edu_course_package_exam.custom_exampaper_name,
+        edu_course_package_exam.status,
+        edu_course_package_exam.exampaper_id ,edu_course_package_exam.sort ,
+        exam_exampaper.name as exam_name,
+        exam_exampaper.is_deleted as exampaper_is_delete,
+        exam_exampaper.subjectId exam_subject_id,exam_exampaper.type exam_type
+
+        from edu_course_package_exam
+        left join exam_exampaper on edu_course_package_exam.exampaper_id = exam_exampaper.id
+        left join edu_course on edu_course_package_exam.course_id = edu_course.id
+        left join edu_course_kpoint on edu_course_package_exam.kpoint_id = edu_course_kpoint.id
+        <where>
+            edu_course_package_exam.is_deleted=0 and  exam_exampaper.id is not null
+            <if test="coursePackageExam.clazzId !=null and coursePackageExam.clazzId !='' ">
+                and edu_course_package_exam.clazz_id = #{coursePackageExam.clazzId}
+            </if>
+            <if test="coursePackageExam.kpointId !=null  ">
+                and edu_course_package_exam.kpoint_id = #{coursePackageExam.kpointId}
+            </if>
+            <if test="coursePackageExam.courseId !=null  ">
+                and edu_course_package_exam.course_id = #{coursePackageExam.courseId}
+            </if>
+            <if test="coursePackageExam.examType !=null ">
+                and exam_exampaper.type = #{coursePackageExam.examType}
+            </if>
+            <if test="coursePackageExam.examSubjectId !=null  ">
+                and exam_exampaper.subjectId = #{coursePackageExam.examSubjectId}
+            </if>
+            <if test="coursePackageExam.examType !=null">
+                and exam_exampaper.type = #{coursePackageExam.examType}
+            </if>
+            <if test="coursePackageExam.examName !=null and coursePackageExam.examName !='' ">
+                and exam_exampaper.name like concat('%',#{coursePackageExam.examName},'%')
+            </if>
+        </where>
+        order by edu_course_package_exam.sort desc
+    </select>
+
+
+    <select id="selectClazzExamPackageList" resultMap="coursePackageExamVOResultMap">
+        select edu_course_package_exam.id as id,
+        edu_course_package_exam.clazz_id,
+        edu_course_package_exam.custom_exampaper_name,
+        edu_course_package_exam.status,
+        edu_course_package_exam.exampaper_id ,edu_course_package_exam.sort ,
+        exam_exampaper.name as exam_name,
+        exam_exampaper.subjectId exam_subject_id,exam_exampaper.type exam_type
+        <if test="coursePackageExam.userIds !=null and coursePackageExam.userIds!='' ">
+             , (select count(1) from exam_exampaper_record where exam_exampaper_record.middle_id=edu_course_package_exam.id
+            and exam_exampaper_record.user_id in
+            <foreach item="item" index="index" collection="coursePackageExam.userIds.split(',')"  open="(" separator="," close=")">
+                #{item}
+            </foreach>) as exam_num
+        </if>
+        from edu_course_package_exam  left join exam_exampaper on edu_course_package_exam.exampaper_id = exam_exampaper.id
+
+        <where>
+            exam_exampaper.id is not null
+            <if test="coursePackageExam.clazzId !=null and coursePackageExam.clazzId !='' ">
+                and edu_course_package_exam.clazz_id = #{coursePackageExam.clazzId}
+            </if>
+            <if test="coursePackageExam.examName !=null and coursePackageExam.examName !='' ">
+                and exam_exampaper.name like concat('%',#{coursePackageExam.examName},'%')
+            </if>
+        </where>
+        order by edu_course_package_exam.sort desc
+    </select>
+
+    <select id="selectCoursePackageExamList" resultMap="coursePackageExamVOResultMap">
+        select edu_course_package_exam.id as id,
+        edu_course_package_exam.clazz_id,
+        edu_course_package_exam.course_id,
+        edu_course.is_deleted as course_is_delete,
+        edu_course_package_exam.kpoint_id,
+        edu_course_kpoint.is_deleted as kpoint_is_delete,
+        edu_course_package_exam.custom_exampaper_name,
+        edu_course_package_exam.status,
+        edu_course_package_exam.exampaper_id ,edu_course_package_exam.sort ,
+        exam_exampaper.name as exam_name,
+        exam_exampaper.is_deleted as exampaper_is_delete,
+        exam_exampaper.subjectId exam_subject_id,exam_exampaper.type exam_type
+
+        from edu_course_package_exam
+        left join exam_exampaper on edu_course_package_exam.exampaper_id = exam_exampaper.id
+        left join edu_course on edu_course_package_exam.course_id = edu_course.id
+        left join edu_course_kpoint on edu_course_package_exam.kpoint_id = edu_course_kpoint.id
+        <where>
+            edu_course_package_exam.is_deleted=0 and exam_exampaper.id is not null
+            <if test="coursePackageExam.clazzId !=null and coursePackageExam.clazzId !='' ">
+                and edu_course_package_exam.clazz_id = #{coursePackageExam.clazzId}
+            </if>
+            <if test="coursePackageExam.kpointId !=null  ">
+                and edu_course_package_exam.kpoint_id = #{coursePackageExam.kpointId}
+            </if>
+            <if test="coursePackageExam.courseId !=null  ">
+                and edu_course_package_exam.course_id = #{coursePackageExam.courseId}
+            </if>
+            <if test="coursePackageExam.examSubjectId !=null  ">
+                and exam_exampaper.subjectId = #{coursePackageExam.examSubjectId}
+            </if>
+            <if test="coursePackageExam.examType !=null  and coursePackageExam.examType !=''">
+                and exam_exampaper.type = #{coursePackageExam.examType}
+            </if>
+            <if test="coursePackageExam.examName !=null and coursePackageExam.examName !='' ">
+                and exam_exampaper.name like concat('%',#{coursePackageExam.examName},'%')
+            </if>
+        </where>
+        order by edu_course_package_exam.sort desc
+    </select>
+</mapper>

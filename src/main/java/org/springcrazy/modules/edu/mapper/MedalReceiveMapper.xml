@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.springcrazy.modules.edu.mapper.MedalReceiveMapper">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="medalReceiveResultMap" type="org.springcrazy.modules.edu.entity.MedalReceive">
+        <id column="id" property="id"/>
+        <result column="medal_id" property="medalId"/>
+        <result column="award_to" property="awardTo"/>
+        <result column="award_from" property="awardFrom"/>
+        <result column="is_avaliable" property="isAvaliable"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="sort" property="sort"/>
+
+    </resultMap>
+
+
+
+</mapper>

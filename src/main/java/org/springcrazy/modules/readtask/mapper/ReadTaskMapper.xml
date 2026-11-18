@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.springcrazy.modules.readtask.mapper.ReadTaskMapper">
+
+<!--    &lt;!&ndash; 通用查询映射结果 &ndash;&gt;-->
+    <resultMap id="readTaskResultMap" type="org.springcrazy.modules.readtask.pojo.ReadTaskVO">
+        <id column="id" property="id"/>
+        <result column="task_count" property="taskCount"/>
+        <result column="task_date_start" property="taskDateStart"/>
+    </resultMap>
+
+
+    <select id="selectTaskByDay" resultMap="readTaskResultMap">
+        select count(1) as task_count,task_date_start from read_task where is_deleted = 0
+
+        <if test="classIds !=null">
+            and class_id in
+            <foreach item="item" index="index" collection="classIds.split(',')"  open="(" separator="," close=")">
+                #{item}
+            </foreach>
+        </if>
+        <if test="taskDateStart != null">
+            and task_date_start &gt;=#{taskDateStart}
+        </if>
+        <if test="taskDateEnd != null">
+            and task_date_end &lt;=#{taskDateEnd}
+        </if>
+        group by task_date_start
+    </select>
+
+</mapper>

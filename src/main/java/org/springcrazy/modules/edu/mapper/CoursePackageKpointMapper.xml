@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.springcrazy.modules.edu.mapper.CoursePackageKpointMapper">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="coursePackageKpointResultMap" type="org.springcrazy.modules.edu.entity.CoursePackageKpoint">
+        <id column="id" property="id"/>
+        <result column="parent_course_id" property="parentCourseId"/>
+        <result column="course_id" property="courseId"/>
+        <result column="sort" property="sort"/>
+        <result column="completion_status" property="completionStatus"/>
+
+    </resultMap>
+
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="coursePackageVOResultMap" type="org.springcrazy.modules.edu.vo.CoursePackageKpointVO">
+        <id column="id" property="id"/>
+        <result column="parent_course_id" property="parentCourseId"/>
+        <result column="course_id" property="courseId"/>
+        <result column="sort" property="sort"/>
+        <result column="course_name" property="courseName"/>
+        <result column="sell_type" property="sellType"/>
+        <result column="current_price" property="currentPrice"/>
+        <result column="logo" property="logo"/>
+        <result column="teachers" property="teachers"/>
+        <result column="teacher_ids" property="teacherIds"/>
+        <result column="teacher_id" property="teacherId"/>
+        <result column="title" property="title"/>
+        <result column="completion_tatus" property="completionStatus"/>
+    </resultMap>
+
+
+    <select id="selectCoursePackageKpointPage" resultMap="coursePackageVOResultMap">
+        select edu_course_package_kpoint.id as id,edu_course.logo as logo,
+        edu_course_package_kpoint.parent_course_id,
+        edu_course_package_kpoint.completion_status ,
+        edu_course_package_kpoint.course_id ,edu_course_package_kpoint.sort ,
+        edu_course.course_name,edu_course.sell_type ,
+        edu_course.current_price,edu_course_package_kpoint.teachers,edu_course_package_kpoint.teacher_ids,edu_course_package_kpoint.teacher_id
+         from edu_course_package_kpoint  left join edu_course on edu_course_package_kpoint.course_id = edu_course.id
+
+         <where>
+             edu_course.id is not null
+             <if test="coursePackage.parentCourseId !=null and coursePackage.parentCourseId !='' ">
+                 and edu_course_package_kpoint.parent_course_id = #{coursePackage.parentCourseId}
+             </if>
+             <if test="coursePackage.courseName !=null and coursePackage.courseName !='' ">
+                 and edu_course.course_name like concat('%',#{coursePackage.courseName},'%')
+             </if>
+             <if test="coursePackage.sellType !=null and coursePackage.sellType !='' ">
+                 and edu_course.sell_type = #{coursePackage.sellType}
+             </if>
+         </where>
+
+        order by edu_course_package_kpoint.sort desc
+    </select>
+
+
+    <select id="selectCoursePackageKpointList" resultMap="coursePackageVOResultMap">
+        select edu_course_package_kpoint.id as id, edu_course_package_kpoint.completion_status as completion_status, edu_course_package_kpoint.parent_course_id ,edu_course_package_kpoint.course_id ,edu_course_package_kpoint.sort ,edu_course.course_name,edu_course.sell_type ,edu_course.current_price
+        ,edu_course.title,edu_course.logo,edu_course_package_kpoint.teachers,edu_course_package_kpoint.teacher_ids,edu_course_package_kpoint.teacher_id
+        from edu_course_package_kpoint  left join edu_course on edu_course_package_kpoint.course_id = edu_course.id
+        <where>
+            edu_course.id is not null
+            <if test="parentCourseId !=null and parentCourseId !='' ">
+                and edu_course_package_kpoint.parent_course_id = #{parentCourseId}
+            </if>
+
+
+            <if test="courseName !=null and courseName !='' ">
+                and edu_course.course_name like concat('%',#{courseName},'%')
+            </if>
+            <if test="sellType !=null and sellType !='' ">
+                and edu_course.sell_type = #{sellType}
+            </if>
+        </where>
+
+        order by edu_course_package_kpoint_kpoint.sort desc
+    </select>
+</mapper>

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.springcrazy.modules.clazz.mapper.ClassGradeMapper">
+
+    <sql id="Base_Column_List">
+        t1.id,t1.name,t1.year,t1.sort_num,
+        t1.creator,t1.editor,t1.add_time,
+        t1.edit_time,t1.remark
+    </sql>
+
+    <select id="getList" resultType="org.springcrazy.modules.clazz.entity.ClassGrade">
+        select
+        <include refid="Base_Column_List"/>
+        from class_grade t1
+        <where>
+            <if test="param.name != null and param.name != ''">
+                AND t1.name like concat('%', #{param.name}, '%')
+            </if>
+            <if test="param.year != null">
+                AND t1.year = #{param.year}
+            </if>
+            AND t1.deleted != 1
+        </where>
+        order by t1.sort_num
+    </select>
+
+</mapper>

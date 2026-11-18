@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.springcrazy.modules.edu.mapper.CourseMaterialMapper">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="courseMaterialResultMap" type="org.springcrazy.modules.edu.entity.CourseMaterial">
+        <id column="id" property="id"/>
+        <result column="course_id" property="courseId"/>
+        <result column="kpoint_id" property="kpointId"/>
+        <result column="name" property="name"/>
+        <result column="file_name" property="fileName"/>
+        <result column="file_url" property="fileUrl"/>
+        <result column="course_name" property="courseName"/>
+        <result column="kpoint_name" property="kpointName"/>
+        <result column="subject_id" property="subjectId"/>
+
+        <result column=" sort" property="sort"/>
+        <result column="create_time" property="createTime"/>
+    </resultMap>
+
+    <select id="getCourseMeterialPage" resultMap="courseMaterialResultMap">
+        select
+        edu_course_material.*,
+        edu_course.course_name course_name,
+        edu_course_kpoint.name kpoint_name,
+        edu_subject.subject_name subject_name
+        from edu_course_material
+        left join edu_course  on edu_course_material.course_id = edu_course.id
+        left join edu_course_kpoint  on edu_course_material.kpoint_id = edu_course_kpoint.id
+        left join edu_subject  on edu_course_material.subject_id = edu_subject.id
+        where 1=1
+        <if test="courseMaterial.name !=null and courseMaterial.name !='' ">
+            and edu_course_material.name like concat('%',#{courseMaterial.name},'%')
+        </if>
+        <if test="courseMaterial.kpointId !=null">
+            and edu_course_material.kpoint_id = #{courseMaterial.kpointId}
+        </if>
+        <if test="courseMaterial.onlyCourse !=null and courseMaterial.onlyCourse !='' ">
+            and edu_course_material.kpoint_id is null
+        </if>
+        <if test="courseMaterial.courseId !=null">
+            and edu_course_material.course_id = #{courseMaterial.courseId}
+        </if>
+        <if test="courseMaterial.subjectId !=null">
+            and edu_course_material.subject_id = #{courseMaterial.subjectId}
+        </if>
+        <if test="courseMaterial.materialIds !=null and courseMaterial.materialIds !='' ">
+            and edu_course_material.id in
+            <foreach item="item" index="index" collection="courseMaterial.materialIds.split(',')"  open="(" separator="," close=")">
+                #{item}
+            </foreach>
+        </if>
+        <if test="courseMaterial.subjects !=null and courseMaterial.subjects !='' ">
+            and edu_course_material.subject_id in
+            <foreach item="item" index="index" collection="courseMaterial.subjects.split(',')"  open="(" separator="," close=")">
+                #{item}
+            </foreach>
+        </if>
+        order by edu_course_material.sort,edu_course_material.id desc
+    </select>
+
+
+<!--    <select id="getCourseMeterialPageWithIds" resultMap="courseMaterialResultMap">-->
+<!--        select-->
+<!--        edu_course_material.*,-->
+<!--        edu_course.course_name course_name,-->
+<!--        edu_course_kpoint.name kpoint_name,-->
+<!--        edu_subject.subject_name subject_name-->
+<!--        from edu_course_material-->
+<!--        left join edu_course  on edu_course_material.course_id = edu_course.id-->
+<!--        left join edu_course_kpoint  on edu_course_material.kpoint_id = edu_course_kpoint.id-->
+<!--        left join edu_subject  on edu_course_material.subject_id = edu_subject.id-->
+<!--        where 1=1-->
+<!--        <if test="courseMaterial.name !=null and courseMaterial.name !='' ">-->
+<!--            and edu_course_material.name like concat('%',#{courseMaterial.name},'%')-->
+<!--        </if>-->
+<!--        <if test="courseMaterial.kpointId !=null">-->
+<!--            and edu_course_material.kpoint_id = #{courseMaterial.kpointId}-->
+<!--        </if>-->
+<!--        <if test="courseMaterial.onlyCourse !=null and courseMaterial.onlyCourse !='' ">-->
+<!--            and edu_course_material.kpoint_id is null-->
+<!--        </if>-->
+<!--        <if test="courseMaterial.courseId !=null">-->
+<!--            and edu_course_material.course_id = #{courseMaterial.courseId}-->
+<!--        </if>-->
+<!--        <if test="courseMaterial.subjectId !=null">-->
+<!--            and edu_course_material.subject_id = #{courseMaterial.subjectId}-->
+<!--        </if>-->
+<!--        <if test="courseMaterial.materialIds !=null and courseMaterial.materialIds !='' ">-->
+<!--            and edu_course_material.id in-->
+<!--            <foreach item="item" index="index" collection="courseMaterial.materialIds.split(',')"  open="(" separator="," close=")">-->
+<!--                #{item}-->
+<!--            </foreach>-->
+<!--        </if>-->
+<!--       -->
+<!--        <if test="courseMaterial.subjects !=null and courseMaterial.subjects !='' ">-->
+<!--            and edu_course_material.subject_id in-->
+<!--            <foreach item="item" index="index" collection="courseMaterial.subjects.split(',')"  open="(" separator="," close=")">-->
+<!--                #{item}-->
+<!--            </foreach>-->
+<!--        </if>-->
+<!--        order by edu_course_material.sort,edu_course_material.id desc-->
+<!--    </select>-->
+
+
+    <select id="selectCourseMaterialPage" resultMap="courseMaterialResultMap">
+        select * from edu_course_material where is_deleted = 0
+    </select>
+
+    <select id="getMaterialsBykpointId" resultMap="courseMaterialResultMap">
+        select * from edu_course_material where kpoint_id = #{id}
+    </select>
+
+    <select id="getMaterialsByCourseId" resultMap="courseMaterialResultMap">
+        select * from edu_course_material where course_id = #{id}
+    </select>
+
+</mapper>

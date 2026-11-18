@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.springcrazy.modules.edu.mapper.ScoreRecordMapper">
+
+    <select id="selectDistinctUsers" resultType="java.lang.Integer">
+        select distinct(user_id) from score_record
+    </select>
+
+    <select id="selectUserTypeScore" resultType="java.math.BigDecimal" >
+        select avg(score)  from score_record where user_id=#{scoreRecord.userId} and  type=#{scoreRecord.type} and  clazz_id=#{scoreRecord.clazzId}
+    </select>
+
+    <!--    <select id="selectDistinctUsers" resultType="java.lang.Integer">-->
+    <!--        select distinct(user_id) from score_record-->
+    <!--    </select>-->
+
+    <select id="selectUserScores" resultType="org.springcrazy.modules.edu.entity.ScoreRecord">
+        SELECT user_id,GROUP_CONCAT(`type`,":",score)AS scores FROM score_record where score_record.type like concat('t_','%')
+        GROUP BY user_id
+    </select>
+
+    <select id="selectUserSumScores" resultType="org.springcrazy.modules.edu.entity.ScoreRecord">
+        SELECT
+        s.user_id,
+        s.clazz_id,
+        SUM(IF(s.type = 'exam', s.sum_score, 0)) AS 't_exam',
+        SUM(IF(s.type = 'kpoint_study', s.sum_score, 0)) AS 't_kpoint_study',
+        SUM(IF(s.type = 'shixun', s.sum_score, 0)) AS 't_shixun'
+        FROM (SELECT clazz_id,user_id,type,sum(score) as sum_score FROM score_record where clazz_id=#{scoreRecord.clazzId}
+        GROUP BY user_id,type ) s
+        GROUP BY s.user_id
+    </select>
+
+
+    <select id="selectStudentsScoreInClazz" resultType="org.springcrazy.modules.edu.entity.ScoreRecord">
+        select students.*,(select course_name from edu_course where edu_course.id=2286) as clazz_name,
+        (select SUM(score_record.score)/#{examTotal} from score_record
+        where score_record.clazz_id=#{clazzId} and score_record.course_id=#{courseId} and score_record.user_id=students.id and score_record.type='exam') as exam_score,
+        (select SUM(score_record.score)/#{kpointTotal} from score_record
+        where score_record.clazz_id=#{clazzId} and score_record.course_id=#{courseId} and score_record.user_id=students.id and score_record.type='kpoint_study') as kpoint_study_score,
+        (select SUM(score_record.score)/#{shixunTotal} from score_record
+        where score_record.clazz_id=#{clazzId} and score_record.course_id=#{courseId} and score_record.user_id=students.id and score_record.type='shixun') as shixun_score
+        from (select edu_student.*,(select MAX(edu_trxorder_detail.auth_time) from edu_trxorder_detail
+        where edu_trxorder_detail.course_id=#{clazzId}  and edu_trxorder_detail.user_id=edu_student.id) as course_auth_time from edu_student where  edu_student.is_deleted = 0) as students
+        where students.course_auth_time is not null
+
+    </select>
+
+
+</mapper>
