@@ -64,7 +64,8 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
-        </dependencies>
+
+</dependencies>
     </dependencyManagement>
 
     <dependencies>
@@ -515,7 +516,8 @@
             <artifactId>spring-boot-starter-test</artifactId>
         </dependency>
 
-    </dependencies>
+
+</dependencies>
 
     <build>
         <finalName>school-boot</finalName>
