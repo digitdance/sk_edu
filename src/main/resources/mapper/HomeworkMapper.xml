@@ -6,9 +6,9 @@
         select t1.*,
         t2.name teacher_name,
         t3.name class_name,
-        count(t4.id) complete_count
+        count(distinct t4.id) complete_count
         <if test="param.studentId != null">
-            ,count(t5.id) completed
+            ,case when count(distinct t5.id) > 0 then true else false end completed
         </if>
         from homework t1
         left join class t3 on t3.id = t1.class_id

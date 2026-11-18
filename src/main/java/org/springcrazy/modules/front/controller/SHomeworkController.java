@@ -170,6 +170,10 @@ public class SHomeworkController {
             return JsonResponseUtil.error("请先添加学生");
         }
         Long studentId = Long.parseLong(student.getId()+"");
+        Homework homework = homeworkService.getById(dto.getHomeworkId());
+        if (homework == null || !isClassMember(homework.getClassId(), studentId)) {
+            return JsonResponseUtil.error("作业不存在或无权提交");
+        }
         dto.setStudentId(studentId);
         if (homeworkRecordService.saveRecord(dto)) {
             return JsonResponseUtil.success();
