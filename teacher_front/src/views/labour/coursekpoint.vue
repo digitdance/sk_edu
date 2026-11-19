@@ -135,9 +135,9 @@
         <el-button type="text" icon="el-icon-unlock" v-if="course.type == 'common'&&scope.row.isLock==1&&scope.row.parentId != '0'" size="small" @click="unLockKpoint(scope.row,0)">解锁
         </el-button> -->
 
-        <!-- <el-button type="text" icon="el-icon-notebook-1" size="small"
-          v-if="scope.row.parentId != '0' && scope.row.kpointType == '1'" @click="openHomework(scope.row)">作业管理
-        </el-button> -->
+        <el-button type="text" icon="el-icon-notebook-1" size="small"
+          v-if="scope.row.parentId != '0' && scope.row.kpointType == '1'" @click="openHomework(scope.row)">作业
+        </el-button>
         <!-- <el-button
           type="text"
           icon="el-icon-notebook-1"
