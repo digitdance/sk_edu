@@ -1,0 +1,20 @@
+# 忽略所有点目录下的内容
+.*/
+
+# 但保留 .gitignore 自身
+!.gitignore
+
+# 环境变量文件（包含敏感信息）
+.env
+
+# Docker 数据
+docker/data/
+
+# Java compiled classes in backend
+backend/com/
+
+# 论文文档目录
+paper/
+
+# Presenton 第三方子项目
+presenton/

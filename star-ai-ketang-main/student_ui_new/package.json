@@ -1,0 +1,22 @@
+{
+  "name": "teaching-platform-student",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
+    "@vitejs/plugin-vue": "latest",
+    "element-plus": "^2.14.8",
+    "lucide-vue-next": "latest",
+    "vite": "^8.3.8",
+    "vue": "latest"
+  },
+  "devDependencies": {
+    "typescript": "latest"
+  }
+}

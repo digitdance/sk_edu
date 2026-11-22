@@ -1,0 +1,309 @@
+# =================================================================
+# NovaCloudEdu — AI 配置（从 application.yml 分离）
+# 使用 YAML 锚点消除 provider 重复配置
+# =================================================================
+
+ai:
+  # ---- DashScope 基础（embedding/rerank 仍在此处） ----
+  dashscope:
+    api-key: ${DASHSCOPE_API_KEY:}
+    base-url: ${DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com/api/v1}
+    llm:
+      model-name: ${DASHSCOPE_LLM_MODEL:qwen-max}
+      vision-model-name: ${DASHSCOPE_VISION_MODEL:qwen-vl-max}
+      temperature: 0.7
+      max-tokens: 2000
+      top-p: 0.8
+      enable-search: false
+    embedding:
+      model-name: ${DASHSCOPE_EMBEDDING_MODEL:text-embedding-v2}
+      dimension: 1536
+      text-type: document
+    rerank:
+      model-name: ${DASHSCOPE_RERANK_MODEL:gte-rerank}
+      enabled: true
+
+  # ---- 对话记忆 ----
+  conversation:
+    max-history: 10
+    context-window: 4000
+    window-size: 20
+    summarize-threshold: 30
+
+  # ---- 多模型路由（使用 YAML 锚点消除重复） ----
+  chat-models:
+    default-model: ${AI_DEFAULT_MODEL:deepseek/deepseek-v4-pro}
+    default-vision-model: ${AI_DEFAULT_VISION_MODEL:openrouter/google/gemini-3-flash-preview}
+
+    # 定义通用默认值
+    provider-defaults: &provider-defaults
+      temperature: 0.7
+      max-tokens: 4000
+      top-p: 0.8
+
+    providers:
+      dashscope:
+        enabled: true
+        api-key: ${DASHSCOPE_API_KEY:}
+        models:
+          qwen-max:
+            <<: *provider-defaults
+            type: text
+            max-tokens: 2000
+            top-p: 0.8
+          qwen-plus:
+            <<: *provider-defaults
+            type: text
+            max-tokens: 2000
+          qwen-turbo:
+            <<: *provider-defaults
+            type: text
+            max-tokens: 2000
+          qwen-long:
+            <<: *provider-defaults
+            type: text
+            max-tokens: 6000
+            top-p: 0.8
+          qwen-vl-max:
+            <<: *provider-defaults
+            type: vision
+            max-tokens: 2000
+          qwen-vl-plus:
+            <<: *provider-defaults
+            type: vision
+            max-tokens: 2000
+          qwen3-235b-a22b:
+            <<: *provider-defaults
+            type: text
+            max-tokens: 8000
+            top-p: 0.8
+
+      openai:
+        enabled: ${OPENAI_ENABLED:false}
+        api-key: ${OPENAI_API_KEY:}
+        base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+        models:
+          gpt-4o:
+            <<: *provider-defaults
+            type: vision
+          gpt-4o-mini:
+            <<: *provider-defaults
+            type: vision
+            max-tokens: 2000
+
+      deepseek:
+        enabled: ${DEEPSEEK_ENABLED:true}
+        api-key: ${DEEPSEEK_API_KEY:}
+        base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com/v1}
+        models:
+          deepseek-chat:
+            <<: *provider-defaults
+            type: text
+          deepseek-reasoner:
+            <<: *provider-defaults
+            type: text
+            temperature: 0.6
+            max-tokens: 8000
+          deepseek-v4-pro:
+            <<: *provider-defaults
+            type: text
+            max-tokens: 128000
+            top-p: 0.8
+
+      moonshot:
+        enabled: ${MOONSHOT_ENABLED:false}
+        api-key: ${MOONSHOT_API_KEY:}
+        base-url: ${MOONSHOT_BASE_URL:https://api.moonshot.cn/v1}
+        models:
+          moonshot-v1-128k:
+            <<: *provider-defaults
+            type: text
+          moonshot-v1-32k:
+            <<: *provider-defaults
+            type: text
+
+      zhipu:
+        enabled: ${ZHIPU_ENABLED:false}
+        api-key: ${ZHIPU_API_KEY:}
+        models:
+          glm-4:
+            <<: *provider-defaults
+            type: text
+          glm-4v:
+            <<: *provider-defaults
+            type: vision
+            max-tokens: 2000
+
+      siliconflow:
+        enabled: ${SILICONFLOW_ENABLED:false}
+        api-key: ${SILICONFLOW_API_KEY:}
+        base-url: ${SILICONFLOW_BASE_URL:https://api.siliconflow.cn/v1}
+        models:
+          deepseek-ai/DeepSeek-V3:
+            <<: *provider-defaults
+            type: text
+          Qwen/Qwen2.5-72B-Instruct:
+            <<: *provider-defaults
+            type: text
+
+      ollama:
+        enabled: ${OLLAMA_ENABLED:false}
+        base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+        models:
+          llama3:
+            <<: *provider-defaults
+            type: text
+          llava:
+            <<: *provider-defaults
+            type: vision
+
+      openrouter:
+        enabled: ${OPENROUTER_ENABLED:false}
+        api-key: ${OPENROUTER_API_KEY:}
+        base-url: ${OPENROUTER_BASE_URL:https://openrouter.ai/api/v1}
+        models:
+          claude-opus-4-8:
+            <<: *provider-defaults
+            type: text
+            max-tokens: 16000
+          openai/gpt-5.2:
+            <<: *provider-defaults
+            type: text
+            max-tokens: 8000
+          openai/gpt-5-nano:
+            <<: *provider-defaults
+            type: text
+          google/gemini-3-flash-preview:
+            <<: *provider-defaults
+            type: vision
+            max-tokens: 8000
+          google/gemini-2.5-flash-preview:
+            <<: *provider-defaults
+            type: vision
+            max-tokens: 8000
+          anthropic/claude-sonnet-4:
+            <<: *provider-defaults
+            type: text
+            max-tokens: 8000
+          openai/gpt-4o:
+            <<: *provider-defaults
+            type: vision
+          openai/gpt-4.1-mini:
+            <<: *provider-defaults
+            type: text
+          deepseek/deepseek-r1:
+            <<: *provider-defaults
+            type: text
+            temperature: 0.6
+            max-tokens: 8000
+          qwen/qwen3-235b-a22b:
+            <<: *provider-defaults
+            type: text
+            max-tokens: 8000
+
+  # ---- 文生图 ----
+  image-models:
+    enabled: true
+    default-model: dashscope/wan2.6-t2i
+    upload-to-oss: true
+    providers:
+      dashscope:
+        enabled: true
+        api-key: ${DASHSCOPE_API_KEY:}
+        type: dashscope
+        models:
+          wan2.6-t2i:
+            size: "1280*1280"
+            n: 1
+            prompt-extend: true
+          wanx2.1-t2i-plus:
+            size: "1024*1024"
+            n: 1
+      siliconflow:
+        enabled: ${SILICONFLOW_ENABLED:false}
+        api-key: ${SILICONFLOW_API_KEY:}
+        base-url: ${SILICONFLOW_BASE_URL:https://api.siliconflow.cn/v1}
+        type: openai
+        models:
+          black-forest-labs/FLUX.1-schnell:
+            size: "1024*1024"
+            steps: 4
+            n: 1
+
+  # ---- 文生视频 ----
+  video-models:
+    enabled: true
+    default-model: dashscope/wan2.6-t2v
+    upload-to-oss: true
+    providers:
+      dashscope:
+        enabled: true
+        api-key: ${DASHSCOPE_API_KEY:}
+        type: dashscope
+        models:
+          wan2.6-t2v:
+            size: "1280*720"
+            duration: 5
+            prompt-extend: true
+          wan2.2-t2v-plus:
+            size: "832*480"
+            duration: 5
+            prompt-extend: true
+
+  # ---- RAG ----
+  rag:
+    enabled: ${RAG_ENABLED:true}
+    top-k: 5
+    similarity-threshold: 0.7
+    chunk-size: 500
+    chunk-overlap: 50
+    max-context-length: 3000
+
+  # ---- AI 总结 ----
+  summary:
+    cache-enabled: true
+    cache-ttl: 7d
+    default-type: detailed
+
+  # ---- 知识点提取 ----
+  knowledge:
+    max-points: 20
+    min-confidence: 0.6
+
+  # ---- 测试题生成 ----
+  quiz:
+    default-count: 5
+    difficulty-distribution:
+      easy: 0.3
+      medium: 0.5
+      hard: 0.2
+
+# =================================================================
+# Tavily Search API（PPT Agent 联网搜索）
+# =================================================================
+tavily:
+  api-key: "${TAVILY_API_KEY:}"
+
+# =================================================================
+# PPT Agent 多智能体（模型槽位留空表示继承 default-model）
+# =================================================================
+ppt:
+  agent:
+    planner-model: ${PPT_AGENT_PLANNER_MODEL:}
+    content-model: ${PPT_AGENT_CONTENT_MODEL:}
+    design-model: ${PPT_AGENT_DESIGN_MODEL:}
+    design-tool-model: ${PPT_AGENT_DESIGN_TOOL_MODEL:}
+    evaluator-model: ${PPT_AGENT_EVALUATOR_MODEL:}
+    layout-selector-model: ${PPT_AGENT_LAYOUT_SELECTOR_MODEL:}
+    html-slide-model: ${PPT_AGENT_HTML_SLIDE_MODEL:}
+    enable-content-validation: ${PPT_AGENT_CONTENT_VALIDATION:true}
+    enable-layout-selection: ${PPT_AGENT_LAYOUT_SELECTION:true}
+    enable-per-slide-inspection: ${PPT_AGENT_PER_SLIDE_INSPECTION:true}
+    concurrency: ${PPT_AGENT_CONCURRENCY:3}
+    quality-threshold: ${PPT_AGENT_QUALITY_THRESHOLD:65}
+    max-repair-rounds: ${PPT_AGENT_MAX_REPAIR_ROUNDS:2}
+    slide-score-threshold: ${PPT_AGENT_SLIDE_SCORE_THRESHOLD:60}
+    image-search:
+      enabled: ${PPT_AGENT_IMAGE_SEARCH_ENABLED:false}
+      provider: ${PPT_AGENT_IMAGE_SEARCH_PROVIDER:bing}
+      api-key: "${PPT_AGENT_IMAGE_SEARCH_API_KEY:}"
