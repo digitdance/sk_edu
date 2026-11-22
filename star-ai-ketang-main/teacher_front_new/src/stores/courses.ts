@@ -1,5 +1,6 @@
 import { ref } from 'vue'
-import { Clapperboard, PenLine, Camera, Radio } from 'lucide-vue-next'
+import { apiRequest } from '../api/client'
+import { Clapperboard, PenLine, Camera, Radio, BookOpen } from 'lucide-vue-next'
 
 export type SectionType = 'video' | 'doc' | 'quiz'
 export interface Section { id: number; title: string; type: SectionType; taskPoint: boolean; quiz: boolean; duration: string }
@@ -130,6 +131,44 @@ export const courses = ref<Course[]>([
     ]
   }
 ])
+
+
+interface ApiCourse {
+  id: number; title: string; subtitle?: string; description?: string; status?: number; statusDesc?: string;
+  teacherId?: number; totalDuration?: number; totalChapters?: number; totalSections?: number; studentCount?: number;
+  coverImage?: string; updateTime?: string
+}
+interface ApiSection { id: number; title: string; videoUrl?: string; resourceUrl?: string; duration?: number; accessible?: boolean }
+interface ApiChapter { id: number; title: string; sections?: ApiSection[] }
+interface ApiStructure { chapters: ApiChapter[] }
+
+export async function loadTeacherCourses(teacherId: number) {
+  const items = await apiRequest<ApiCourse[]>(`/api/course/teacher/${teacherId}?page=1&size=100`)
+  const loaded = await Promise.all(items.map(async (item) => {
+    let chapters: Chapter[] = []
+    try {
+      const structure = await apiRequest<ApiStructure>(`/api/course/${item.id}/structure`)
+      chapters = (structure.chapters ?? []).map((chapter) => {
+        const sections = (chapter.sections ?? []).map((section) => ({
+          id: section.id, title: section.title, type: section.resourceUrl && !section.videoUrl ? 'doc' as const : 'video' as const,
+          taskPoint: true, quiz: false, duration: section.duration ? `${Math.floor(section.duration / 60)}:${String(section.duration % 60).padStart(2, '0')}` : '00:00'
+        }))
+        return { id: chapter.id, title: chapter.title, points: sections.length, sections }
+      })
+    } catch {
+      chapters = []
+    }
+    return {
+      id: item.id, name: item.title, code: `COURSE-${item.id}`,
+      status: (item.statusDesc ?? (item.status === 1 ? '已发布' : '建设中')) as Course['status'],
+      level: '', hours: Math.round((item.totalDuration ?? 0) / 60), classes: 0, students: item.studentCount ?? 0,
+      semester: '', updated: item.updateTime?.slice(0, 10) ?? '', progress: 0,
+      icon: BookOpen, cover: 'linear-gradient(135deg,#2f6bff,#6b4dff)', intro: item.description ?? item.subtitle ?? '', chapters
+    } satisfies Course
+  }))
+  courses.value = loaded
+}
+
 
 export const chapterPoints = (c: Course) => c.chapters.reduce((s, ch) => s + ch.points, 0)
 

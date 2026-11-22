@@ -27,6 +27,7 @@ interface AuthUser {
 
 interface AuthState {
   loggedIn: boolean
+  userId: number
   sessionReady: boolean
   profile: TeacherProfile
   notify: { site: boolean; mail: boolean; wechat: boolean }
@@ -36,6 +37,7 @@ interface AuthState {
 const KEY = 'teacher-auth-v1'
 const defaults: AuthState = {
   loggedIn: false,
+  userId: 0,
   sessionReady: false,
   profile: { name: '', account: '', title: '', college: '', gender: '', phone: '', email: '', bio: '' },
   notify: { site: true, mail: true, wechat: false },
@@ -65,6 +67,7 @@ export const auth = reactive<AuthState>(load())
 function persist() {
   localStorage.setItem(KEY, JSON.stringify({
     loggedIn: auth.loggedIn,
+    userId: auth.userId,
     profile: auth.profile,
     notify: auth.notify,
     privacy: auth.privacy,
@@ -82,6 +85,7 @@ function applyUser(user: AuthUser) {
     bio: user.userProfile || '',
   }
   auth.loggedIn = true
+  auth.userId = user.id
   auth.sessionReady = true
   persist()
 }
@@ -108,6 +112,10 @@ export async function restoreSession() {
   const token = localStorage.getItem('teacher-access-token')
   if (!token) {
     auth.loggedIn = false
+  auth.userId = 0
+  auth.userId = 0
+  auth.userId = 0
+  auth.userId = 0
     auth.sessionReady = true
     return
   }
@@ -119,6 +127,10 @@ export async function restoreSession() {
     setAccessToken(null)
     localStorage.removeItem('teacher-refresh-token')
     auth.loggedIn = false
+  auth.userId = 0
+  auth.userId = 0
+  auth.userId = 0
+  auth.userId = 0
     persist()
   } finally {
     auth.sessionReady = true
@@ -129,6 +141,10 @@ export function logout() {
   setAccessToken(null)
   localStorage.removeItem('teacher-refresh-token')
   auth.loggedIn = false
+  auth.userId = 0
+  auth.userId = 0
+  auth.userId = 0
+  auth.userId = 0
   auth.sessionReady = true
   persist()
 }
@@ -157,6 +173,10 @@ export function saveSettings() {
 if (typeof window !== 'undefined') {
   window.addEventListener('teacher-session-expired', () => {
     auth.loggedIn = false
+  auth.userId = 0
+  auth.userId = 0
+  auth.userId = 0
+  auth.userId = 0
     auth.sessionReady = true
     persist()
   })

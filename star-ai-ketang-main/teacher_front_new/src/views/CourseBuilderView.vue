@@ -209,6 +209,7 @@
                 <el-tag v-if="sec.taskPoint" size="small" type="success" effect="light">任务点</el-tag>
                 <el-tag v-if="sec.quiz" size="small" type="warning" effect="light">含测验</el-tag>
                 <span class="muted">{{ sec.duration }}</span>
+                <el-button link type="primary" size="small" @click.stop="assignSectionHomework(ch, sec)">Homework</el-button>
               </div>
             </div>
           </div>
@@ -515,6 +516,7 @@ import {
   BookOpen, Globe, Code2, Truck, Lightbulb, Languages, CheckCircle2
 } from 'lucide-vue-next'
 import { courses, chapterPoints, portalCourseId, type Course, type Chapter, type SectionType } from '../stores/courses'
+import { openHomeworkForSection } from '../stores/homework-context'
 
 const emit = defineEmits<{ navigate: [id: string] }>()
 
@@ -555,6 +557,11 @@ const activeCourseId = ref<number | null>(null)
 const activeCourse = computed(() => courses.value.find(c => c.id === activeCourseId.value) ?? null)
 const chapters = computed<Chapter[]>(() => activeCourse.value?.chapters ?? [])
 
+function assignSectionHomework(chapter: Chapter, section: Chapter['sections'][number]) {
+  if (!activeCourse.value) return
+  openHomeworkForSection({ courseId: activeCourse.value.id, chapterId: chapter.id, sectionId: section.id, sectionTitle: section.title })
+  emit('navigate', 'homework')
+}
 function openCourse(id: number) {
   activeCourseId.value = id
   tab.value = 'intro'

@@ -4872,3 +4872,48 @@ SET title = CASE subject
 END
 WHERE title LIKE '【示例】作业%';
 -- >>> END: 101_realistic_data_cleanup.sql <<<
+
+
+CREATE TABLE IF NOT EXISTS homework_assignment (
+    id BIGSERIAL PRIMARY KEY,
+    teacher_id BIGINT NOT NULL REFERENCES "user"(id),
+    course_id BIGINT NOT NULL REFERENCES course(id),
+    chapter_id BIGINT,
+    section_id BIGINT,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    total_score INTEGER NOT NULL DEFAULT 100 CHECK (total_score > 0),
+    pass_score INTEGER NOT NULL DEFAULT 60 CHECK (pass_score >= 0),
+    deadline TIMESTAMP,
+    status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
+    settings_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_homework_assignment_teacher ON homework_assignment(teacher_id, update_time DESC);
+CREATE INDEX IF NOT EXISTS idx_homework_assignment_course ON homework_assignment(course_id);
+CREATE INDEX IF NOT EXISTS idx_homework_assignment_status ON homework_assignment(status, deadline);
+
+CREATE TABLE IF NOT EXISTS homework_assignment_class (
+    assignment_id BIGINT NOT NULL REFERENCES homework_assignment(id) ON DELETE CASCADE,
+    class_id BIGINT NOT NULL REFERENCES class_info(id) ON DELETE CASCADE,
+    PRIMARY KEY (assignment_id, class_id)
+);
+CREATE INDEX IF NOT EXISTS idx_homework_assignment_class_class ON homework_assignment_class(class_id);
+
+CREATE TABLE IF NOT EXISTS homework_assignment_submission (
+    id BIGSERIAL PRIMARY KEY,
+    assignment_id BIGINT NOT NULL REFERENCES homework_assignment(id) ON DELETE CASCADE,
+    student_id BIGINT NOT NULL REFERENCES "user"(id),
+    attempt_no INTEGER NOT NULL DEFAULT 1 CHECK (attempt_no > 0),
+    answers_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    attachment_urls_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    status VARCHAR(20) NOT NULL DEFAULT 'SUBMITTED',
+    score NUMERIC(8,2),
+    teacher_comment TEXT,
+    submitted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    graded_at TIMESTAMP,
+    UNIQUE (assignment_id, student_id, attempt_no)
+);
+CREATE INDEX IF NOT EXISTS idx_homework_submission_assignment ON homework_assignment_submission(assignment_id, submitted_at);
+CREATE INDEX IF NOT EXISTS idx_homework_submission_student ON homework_assignment_submission(student_id, submitted_at DESC);

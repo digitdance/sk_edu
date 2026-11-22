@@ -46,7 +46,7 @@
         <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
             <el-button v-if="row.status === 'todo'" link type="primary" size="small" @click="openDo(row)">去完成作业</el-button>
-            <el-button v-else-if="row.status === 'submitted'" link size="small" @click="retake(row)">申请重做</el-button>
+            <el-button v-else-if="row.retakeLeft > 0" link size="small" @click="retake(row)">申请重做</el-button>
             <el-button v-else link type="primary" size="small" @click="viewResult(row)">查看批改</el-button>
           </template>
         </el-table-column>
@@ -57,6 +57,7 @@
     <el-dialog v-model="doDialog" :title="current?.name" width="640px" :close-on-click-modal="false">
       <el-alert type="warning" :closable="false" show-icon style="margin-bottom:14px"
         title="禁止粘贴 · 题目乱序 · 提交后立即显示客观题分数" />
+      <p v-if="current?.description" class="q-stem">{{ current.description }}</p><el-input v-model="answerText" type="textarea" :rows="6" maxlength="5000" show-word-limit placeholder="Write your response" />
       <div v-for="(q, i) in questions" :key="i" class="q-block">
         <p class="q-stem">{{ i + 1 }}. {{ q.stem }}（{{ q.score }} 分）</p>
         <el-radio-group v-if="q.type === 'single'" v-model="q.my" class="q-opts">
@@ -109,7 +110,7 @@
           </div>
         </template>
         <el-divider content-position="left">教师评语</el-divider>
-        <p class="comment-box">结构完整，案例选取恰当；第 3 题注意完播率的计算口径，建议回看 3.1 节 05:40 处讲解。—— 王琳</p>
+        <p v-if="current.answer" class="answer-box">{{ current.answer }}</p><p v-if="current.answer" class="answer-box">{{ current.answer }}</p><p class="comment-box">{{ current.teacherComment || "No teacher feedback yet" }}</p>
         <el-divider content-position="left">答题情况</el-divider>
         <div v-for="(q, i) in resultQuestions" :key="i" class="rq-row">
           <el-tag size="small" :type="q.right ? 'success' : 'danger'" effect="light">{{ q.right ? '正确' : '错误' }}</el-tag>
@@ -122,106 +123,110 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadFile } from 'element-plus'
 import { UploadCloud, FileText, X } from 'lucide-vue-next'
+import { listMyAssignments, submitAssignment, uploadHomeworkAttachment, type HomeworkAssignment } from '../../api/homework-api'
 
 type Status = 'todo' | 'submitted' | 'graded'
 interface Homework {
-  id: number; name: string; course: string; deadline: string; urgent: boolean;
-  status: Status; score: number | null; objScore: number | null; retakeLeft: number
-  requireAttachment?: boolean; attachments?: string[]
+  id: number; name: string; course: string; description: string; deadline: string; urgent: boolean;
+  status: Status; score: number | null; objScore: number | null; retakeLeft: number;
+  submissionId?: number; teacherComment?: string; requireAttachment: boolean; attachments: string[]
+  answer: string
 }
-
+interface PickedFile { name: string; size: string; url: string }
 const filter = ref('all')
+const courseFilter = ref('all')
 const doDialog = ref(false)
 const resultDrawer = ref(false)
-const current = ref<Homework | null>(null)
-
-const statusText: Record<Status, string> = { todo: '待提交', submitted: '已提交', graded: '已批改' }
-
-const homework = ref<Homework[]>([
-  { id: 1, name: '第 2 章作业 · 视频剪辑基础', course: '短视频制作与运营', deadline: '11-21 22:00', urgent: true, status: 'todo', score: null, objScore: null, retakeLeft: 2, requireAttachment: true },
-  { id: 2, name: '3.1 课后思考 · 算法理解', course: '短视频制作与运营', deadline: '11-26 22:00', urgent: false, status: 'todo', score: null, objScore: null, retakeLeft: 2 },
-  { id: 3, name: '第 1 章作业 · 平台认知测验', course: '短视频制作与运营', deadline: '11-14 22:00', urgent: false, status: 'graded', score: 88, objScore: 56, retakeLeft: 1 },
-  { id: 4, name: '文案标题专项练习', course: '新媒体文案写作', deadline: '11-12 22:00', urgent: false, status: 'graded', score: 92, objScore: 60, retakeLeft: 0 },
-  { id: 5, name: '2.2 剪辑实操作品提交', course: '短视频制作与运营', deadline: '11-18 22:00', urgent: false, status: 'submitted', score: null, objScore: null, retakeLeft: 2, requireAttachment: true, attachments: ['30s混剪作品_刘洋.mp4', '制作说明.pdf'] }
-])
-
-/* ---------- 作业附件上传 ---------- */
-interface PickedFile { name: string; size: string }
+const currentId = ref(0)
 const files = ref<PickedFile[]>([])
+const answerText = ref('')
+const homework = ref<Homework[]>([])
+const current = computed(() => homework.value.find(h => h.id === currentId.value) ?? null)
+const statusText: Record<Status, string> = { todo: '待提交', submitted: '已提交', graded: '已批改' }
+const filtered = computed(() => homework.value.filter(h =>
+  (filter.value === 'all' || h.status === filter.value) &&
+  (courseFilter.value === 'all' || h.course === courseFilter.value)))
+const courseOptions = computed(() => [...new Set(homework.value.map(h => h.course))])
+const questions: { type: string; stem: string; options: string[]; score: number; my: string }[] = []
+const resultQuestions: { stem: string; right: boolean; got: number; score: number }[] = []
+
+function parseSettings(value: unknown): Record<string, unknown> {
+  if (value && typeof value === 'object') return value as Record<string, unknown>
+  if (typeof value === 'string') { try { return JSON.parse(value) as Record<string, unknown> } catch { return {} } }
+  return {}
+}
+function formatDeadline(value?: string) {
+  if (!value) return '未设置'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
+}
+function attachmentNames(value: unknown): string[] {
+  let list = value
+  if (typeof value === 'string') { try { list = JSON.parse(value) } catch { list = [] } }
+  return Array.isArray(list) ? list.filter((url): url is string => typeof url === 'string').map(url => url.split('/').pop() || url) : []
+}
+function mapAssignment(item: HomeworkAssignment): Homework {
+  const settings = parseSettings(item.settings)
+  const status: Status = item.submissionStatus === 'GRADED' ? 'graded' : item.submissionStatus === 'SUBMITTED' ? 'submitted' : 'todo'
+  return {
+    id: item.id, name: item.title, course: item.courseName, description: item.description ?? '',
+    deadline: formatDeadline(item.deadline), urgent: false, status, score: item.score ?? null, objScore: null,
+    submissionId: item.submissionId, teacherComment: item.teacherComment,
+    answer: String(parseSettings(item.answers).answer ?? ''),
+    retakeLeft: settings.allowRetake === true ? Number(settings.retakeCount ?? 2) : 0,
+    requireAttachment: Array.isArray(settings.formats) && settings.formats.includes('附件'), attachments: attachmentNames(item.attachments)
+  }
+}
+async function loadHomework() {
+  const assignments = await listMyAssignments()
+  homework.value = assignments.map(mapAssignment)
+  if (!homework.value.some(h => h.id === currentId.value)) currentId.value = homework.value[0]?.id ?? 0
+}
 function formatSize(bytes: number) {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
   return `${Math.max(1, Math.round(bytes / 1024))} KB`
 }
-function onPickFile(file: UploadFile) {
+async function onPickFile(file: UploadFile) {
   if (!file.raw) return
-  files.value.push({ name: file.name, size: formatSize(file.raw.size) })
-  ElMessage.success(`「${file.name}」已加入待提交附件`)
+  try {
+    const uploaded = await uploadHomeworkAttachment(file.raw)
+    files.value.push({ name: uploaded.originalName || file.name, size: formatSize(file.raw.size), url: uploaded.fileUrl })
+    ElMessage.success('附件上传完成')
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : '附件上传失败') }
 }
-
-const filtered = computed(() => homework.value.filter(h =>
-  (filter.value === 'all' || h.status === filter.value) &&
-  (courseFilter.value === 'all' || h.course === courseFilter.value)
-))
-
-/* ---------- 课程筛选 ---------- */
-const courseFilter = ref('all')
-const courseOptions = computed(() => [...new Set(homework.value.map(h => h.course))])
-
-const questions = ref([
-  { type: 'single', stem: '短视频平台冷启动阶段最看重的指标是？', options: ['点赞量', '完播率', '评论量', '转发量'], score: 4, my: '' },
-  { type: 'single', stem: '「黄金三秒」原则指的是？', options: ['开头快速抛出核心看点', '前三秒必须出现人物', '前三秒留白', '前三秒展示 logo'], score: 4, my: '' },
-  { type: 'text', stem: '结合案例，阐述账号垂直定位对涨粉效率的影响机制。', score: 10, my: '' }
-])
-
-const resultQuestions = [
-  { stem: '冷启动阶段最看重的指标', right: true, got: 4, score: 4 },
-  { stem: '「黄金三秒」原则', right: true, got: 4, score: 4 },
-  { stem: '有效互动行为识别（多选）', right: false, got: 0, score: 3 },
-  { stem: '简答：垂直定位影响机制', right: true, got: 8, score: 10 }
-]
-
 function openDo(row: Homework) {
-  current.value = row
-  questions.value.forEach(q => (q.my = ''))
+  currentId.value = row.id
+  answerText.value = ''
   files.value = []
   doDialog.value = true
 }
-function submitHomework() {
-  if (current.value?.requireAttachment && !files.value.length) {
-    ElMessage.warning('该作业要求上传附件，请先上传后再提交')
-    return
-  }
-  const undone = questions.value.filter(q => !q.my).length
-  const doSubmit = () => {
-    if (current.value) {
-      current.value.status = 'submitted'
-      if (files.value.length) current.value.attachments = files.value.map(f => f.name)
-    }
+async function submitHomework() {
+  if (!current.value) return
+  if (current.value.requireAttachment && !files.value.length) { ElMessage.warning('请先上传作业附件'); return }
+  try {
+    await submitAssignment(current.value.id, { answer: answerText.value }, files.value.map(file => file.url))
     doDialog.value = false
-    ElMessage.success(files.value.length
-      ? `提交成功！已上传 ${files.value.length} 个附件，教师批阅后可查看成绩`
-      : '提交成功！客观题得分 52 / 60，主观题待教师批阅')
-  }
-  if (undone) {
-    ElMessageBox.confirm(`还有 ${undone} 题未作答，确认提交？`, '提交确认', { type: 'warning' })
-      .then(doSubmit).catch(() => undefined)
-  } else doSubmit()
+    ElMessage.success('作业已提交')
+    await loadHomework()
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : '提交作业失败') }
 }
 function retake(row: Homework) {
-  if (!row.retakeLeft) { ElMessage.warning('重做次数已用完'); return }
+  if (!row.retakeLeft) { ElMessage.warning('已达到重做次数上限'); return }
   ElMessageBox.confirm(`剩余重做次数 ${row.retakeLeft} 次，确认申请重做？`, '申请重做', { type: 'info' })
-    .then(() => { row.retakeLeft -= 1; openDo(row) })
-    .catch(() => undefined)
+    .then(() => openDo(row)).catch(() => undefined)
 }
-function viewResult(row: Homework) {
-  current.value = row
-  resultDrawer.value = true
-}
+function viewResult(row: Homework) { currentId.value = row.id; resultDrawer.value = true }
+function previewAttachment(name: string) { ElMessage.info(`附件：${name}`) }
+onMounted(() => { void loadHomework().catch(error => ElMessage.error(error instanceof Error ? error.message : '加载作业失败')) })
 </script>
+
+
+
+
 
 <style scoped>
 .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }

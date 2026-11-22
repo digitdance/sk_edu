@@ -69,6 +69,7 @@ const groups: NavGroup[] = [
       { id: 'bank', label: '题库与试卷', icon: Library },
       { id: 'homework', label: '作业管理', icon: ClipboardList },
       { id: 'grading', label: '作业批阅', icon: PenSquare },
+      { id: 'homework-library', label: 'Homework library', icon: Library },
       { id: 'exam', label: '测验考试', icon: FileCheck2 },
       { id: 'grades', label: '成绩统计', icon: BarChart3 }
     ]

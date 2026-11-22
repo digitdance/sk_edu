@@ -18,7 +18,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import SidebarNav from './components/SidebarNav.vue'
 import TopBar from './components/TopBar.vue'
 
@@ -29,6 +29,7 @@ import LearningControlView from './views/LearningControlView.vue'
 import QuestionBankView from './views/QuestionBankView.vue'
 import HomeworkManageView from './views/HomeworkManageView.vue'
 import HomeworkGradingView from './views/HomeworkGradingView.vue'
+import HomeworkLibraryView from './views/HomeworkLibraryView.vue'
 import ExamView from './views/ExamView.vue'
 import GradeStatsView from './views/GradeStatsView.vue'
 import AiLessonPrepView from './views/AiLessonPrepView.vue'
@@ -39,10 +40,11 @@ import LoginView from './views/LoginView.vue'
 import ProfileView from './views/ProfileView.vue'
 import AccountSettingsView from './views/AccountSettingsView.vue'
 import { auth, restoreSession } from './stores/auth'
+import { loadTeacherCourses } from './stores/courses'
 
 export type ViewId =
   | 'course' | 'portal' | 'resources' | 'control' | 'bank' | 'homework'
-  | 'grading' | 'exam' | 'grades' | 'ai-prep' | 'ai-analysis' | 'ai-qa' | 'users'
+  | 'grading' | 'homework-library' | 'exam' | 'grades' | 'ai-prep' | 'ai-analysis' | 'ai-qa' | 'users'
   | 'profile' | 'settings'
 
 const viewMeta: Record<ViewId, { title: string; subtitle: string; component: unknown }> = {
@@ -52,6 +54,7 @@ const viewMeta: Record<ViewId, { title: string; subtitle: string; component: unk
   control: { title: '学习控制', subtitle: '章节开放模式、任务点矩阵与视频播放管控', component: LearningControlView },
   bank: { title: '题库与试卷', subtitle: '题库管理、模板导入导出与随机组卷', component: QuestionBankView },
   homework: { title: '作业管理', subtitle: '作业创建、题目来源与评分规则设置', component: HomeworkManageView },
+  'homework-library': { title: 'Homework library', subtitle: 'Saved assignment drafts for reuse', component: HomeworkLibraryView },
   grading: { title: '作业批阅', subtitle: '客观题自动判分、主观题批阅与 AI 参考评分', component: HomeworkGradingView },
   exam: { title: '测验考试', subtitle: '考试安排、随机多套试卷与试卷分析', component: ExamView },
   grades: { title: '成绩统计', subtitle: '成绩权重、分数分布、排名与线下成绩录入', component: GradeStatsView },
@@ -67,6 +70,7 @@ const activeView = ref<ViewId>('course')
 const sidebarOpen = ref(false)
 const meta = computed(() => viewMeta[activeView.value])
 onMounted(() => { void restoreSession() })
+watch(() => auth.sessionReady && auth.loggedIn, (active) => { if (active) void loadTeacherCourses(auth.userId).catch(() => undefined) }, { immediate: true })
 
 function navigate(id: string) {
   if (id in viewMeta) {

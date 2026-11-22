@@ -4,17 +4,14 @@
     <div class="panel">
       <div class="grade-head">
         <div class="stat-row">
-          <div class="stat-mini"><span class="num mono">38</span><span class="lbl">已提交</span></div>
+          <div class="stat-mini"><span class="num mono">{{ submittedCount }}</span><span class="lbl">已提交</span></div>
           <el-divider direction="vertical" />
-          <div class="stat-mini"><span class="num mono" style="color:#e6a23c">12</span><span class="lbl">待批阅</span></div>
+          <div class="stat-mini"><span class="num mono" style="color:#e6a23c">{{ pendingCount }}</span><span class="lbl">待批阅</span></div>
           <el-divider direction="vertical" />
-          <div class="stat-mini"><span class="num mono" style="color:#2fbf71">26</span><span class="lbl">已批阅</span></div>
+          <div class="stat-mini"><span class="num mono" style="color:#2fbf71">{{ gradedCount }}</span><span class="lbl">已批阅</span></div>
         </div>
         <div class="filter-row">
-          <el-select v-model="homeworkFilter" style="width:230px">
-            <el-option label="第 2 章作业 · 视频剪辑基础" value="hw2" />
-            <el-option label="第 1 章作业 · 平台认知测验" value="hw1" />
-          </el-select>
+          <el-select v-model="homeworkFilter" style="width:230px"><el-option v-for="assignment in homeworkOptions" :key="assignment.id" :label="assignment.title" :value="assignment.id" /></el-select>
           <el-select v-model="statusFilter" style="width:120px">
             <el-option label="全部状态" value="all" />
             <el-option label="待批阅" value="pending" />
@@ -73,7 +70,7 @@
             <Paperclip :size="14" style="color:var(--el-color-primary)" />
             <span class="att-name">{{ f.name }}</span>
             <span class="muted">{{ f.size }}</span>
-            <el-button link type="primary" size="small" @click="previewAttachment(f.name)">预览</el-button>
+            <el-button link type="primary" size="small" @click="previewAttachment(f)">预览</el-button>
             <el-button link size="small" @click="downloadFile(f)">下载</el-button>
           </div>
         </div>
@@ -96,7 +93,7 @@
 
           <div class="grade-inputs">
             <el-form-item label="本题得分">
-              <el-input-number v-model="subjectiveScore" :min="0" :max="10" :step="0.5" />
+              <el-input-number v-model="subjectiveScore" :min="0" :max="homeworkOptions.find(item => item.id === homeworkFilter)?.totalScore ?? 100" :step="0.5" />
             </el-form-item>
             <el-form-item label="评语" style="flex:1">
               <el-input v-model="comment" type="textarea" :rows="2" placeholder="输入评语，学生端批阅后可见" />
@@ -127,85 +124,101 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { downloadText } from '../utils/download'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search as SearchIcon, BellRing, Sparkles, Paperclip } from 'lucide-vue-next'
 import { previewDocument } from '../utils/kkPreview'
+import { listTeacherAssignments, listAssignmentSubmissions, gradeAssignmentSubmission, type HomeworkAssignment, type HomeworkSubmission } from '../api/homework-api'
 
-/** 预览学生上传的附件：文档走 kkFileView 在线预览，其它类型提示下载查看 */
-function previewAttachment(name: string) {
-  if (previewDocument(name)) ElMessage.success(`正在通过 kkFileView 打开「${name}」在线预览`)
-  else ElMessage.info('该类型暂不支持在线预览，请下载后查看')
-}
-
-interface Attachment { name: string; size: string }
+interface Attachment { name: string; size: string; url: string }
 interface Student {
-  id: number; name: string; no: string; status: 'pending' | 'graded' | 'missing';
-  score: number; objective: number; submitTime: string; aiScore: number; aiComment: string; answer: string
-  attachments?: Attachment[]
+  id: number; submissionId: number; name: string; no: string; status: 'pending' | 'graded'; score: number;
+  objective: number; submitTime: string; aiScore: number; aiComment: string; answer: string; attachments: Attachment[]
 }
-
-const homeworkFilter = ref('hw2')
+const homeworkOptions = ref<HomeworkAssignment[]>([])
+const homeworkFilter = ref<number | null>(null)
 const statusFilter = ref('all')
 const keyword = ref('')
-const currentId = ref(1)
-const subjectiveScore = ref(8)
+const currentId = ref(0)
+const subjectiveScore = ref(0)
 const comment = ref('')
-
-const students = ref<Student[]>([
-  { id: 1, name: '刘洋', no: '20240115', status: 'pending', score: 0, objective: 52, submitTime: '11-19 20:14', aiScore: 8, aiComment: '结构完整，覆盖「垂直定位→内容匹配→粉丝转化」链路；建议补充具体数据案例。', answer: '账号垂直定位能让平台算法更精准地识别内容标签，从而把视频推荐给真正感兴趣的人群。垂直账号的粉丝画像集中，完播率和互动率更高，进入更大流量池的概率也随之提升……', attachments: [{ name: '30s混剪作品_刘洋.mp4', size: '86.2 MB' }, { name: '制作说明_刘洋.docx', size: '18 KB' }] },
-  { id: 2, name: '陈思雨', no: '20240116', status: 'graded', score: 88, objective: 56, submitTime: '11-19 18:02', aiScore: 9, aiComment: '论述充分，案例翔实。', answer: '（已批阅）垂直定位的本质是降低算法理解成本……', attachments: [{ name: '混剪作品_陈思雨.mp4', size: '64.5 MB' }] },
-  { id: 3, name: '王子涵', no: '20240117', status: 'pending', score: 0, objective: 48, submitTime: '11-19 21:40', aiScore: 7, aiComment: '要点齐全但缺少个人分析。', answer: '垂直账号更容易被算法打上明确标签……', attachments: [{ name: '剪辑作业_王子涵.mp4', size: '71.8 MB' }, { name: '分镜脚本_王子涵.pdf', size: '320 KB' }] },
-  { id: 4, name: '李梦琪', no: '20240118', status: 'graded', score: 95, objective: 60, submitTime: '11-18 16:33', aiScore: 10, aiComment: '结构、论据、数据俱佳。', answer: '（已批阅，范文）从流量池机制看……', attachments: [{ name: '混剪作品_李梦琪.mp4', size: '92.4 MB' }] },
-  { id: 5, name: '张浩然', no: '20240119', status: 'missing', score: 0, objective: 0, submitTime: '—', aiScore: 0, aiComment: '', answer: '' },
-  { id: 6, name: '赵可欣', no: '20240120', status: 'pending', score: 0, objective: 44, submitTime: '11-19 22:01', aiScore: 6, aiComment: '观点正确但论述较浅，建议举例。', answer: '我觉得垂直定位很重要……', attachments: [{ name: '剪辑作业_赵可欣.mp4', size: '55.1 MB' }] }
-])
-
-const optionStats = [
-  { key: 'A', text: '点赞量', pct: 12, right: false },
-  { key: 'B', text: '完播率', pct: 63, right: true },
-  { key: 'C', text: '评论量', pct: 18, right: false },
-  { key: 'D', text: '转发量', pct: 7, right: false }
-]
-
-const filteredStudents = computed(() =>
-  students.value.filter(s =>
-    (statusFilter.value === 'all' || s.status === statusFilter.value) &&
-    (s.name.includes(keyword.value) || s.no.includes(keyword.value))
-  )
-)
-const current = computed(() => filteredStudents.value.find(s => s.id === currentId.value) || filteredStudents.value[0] || null)
-const currentIndex = computed(() => (current.value ? filteredStudents.value.findIndex(s => s.id === current.value!.id) : 0))
-
-function selectStudent(s: Student) {
-  currentId.value = s.id
-  subjectiveScore.value = s.status === 'graded' ? s.score - s.objective : s.aiScore || 0
+const students = ref<Student[]>([])
+const optionStats: { key: string; text: string; pct: number; right: boolean }[] = []
+const filteredStudents = computed(() => students.value.filter(s =>
+  (statusFilter.value === 'all' || s.status === statusFilter.value) &&
+  (s.name.includes(keyword.value) || s.no.includes(keyword.value))))
+const current = computed(() => filteredStudents.value.find(s => s.id === currentId.value) ?? filteredStudents.value[0] ?? null)
+const currentIndex = computed(() => current.value ? filteredStudents.value.findIndex(s => s.id === current.value!.id) : 0)
+const submittedCount = computed(() => students.value.length)
+const gradedCount = computed(() => students.value.filter(s => s.status === 'graded').length)
+const pendingCount = computed(() => submittedCount.value - gradedCount.value)
+function parseObject(value: unknown): Record<string, unknown> {
+  if (value && typeof value === 'object') return value as Record<string, unknown>
+  if (typeof value === 'string') { try { return JSON.parse(value) as Record<string, unknown> } catch { return {} } }
+  return {}
+}
+function parseAttachments(value: unknown): Attachment[] {
+  let list = value
+  if (typeof value === 'string') { try { list = JSON.parse(value) } catch { list = [] } }
+  if (!Array.isArray(list)) return []
+  return list.filter((item): item is string => typeof item === 'string').map(url => ({ name: url.split('/').pop() || url, size: '', url }))
+}
+async function loadAssignments() {
+  homeworkOptions.value = await listTeacherAssignments()
+  if (!homeworkFilter.value && homeworkOptions.value.length) homeworkFilter.value = homeworkOptions.value[0].id
+  if (!homeworkOptions.value.length) students.value = []
+}
+async function loadSubmissions() {
+  if (!homeworkFilter.value) { students.value = []; return }
+  const records = await listAssignmentSubmissions(homeworkFilter.value)
+  students.value = records.map((record: HomeworkSubmission) => {
+    const answers = parseObject(record.answers)
+    return {
+      id: record.id, submissionId: record.id, name: record.studentName || record.studentAccount,
+      no: record.studentAccount, status: record.status === 'GRADED' ? 'graded' : 'pending', score: Number(record.score ?? 0),
+      objective: 0, submitTime: record.submittedAt ? new Date(record.submittedAt).toLocaleString() : '',
+      aiScore: 0, aiComment: '', answer: String(answers.answer ?? answers.text ?? Object.values(answers).join('\n')),
+      attachments: parseAttachments(record.attachments)
+    }
+  })
+  currentId.value = students.value[0]?.id ?? 0
+  if (students.value[0]) selectStudent(students.value[0])
+}
+function selectStudent(student: Student) {
+  currentId.value = student.id
+  subjectiveScore.value = student.score
   comment.value = ''
 }
 function go(step: number) {
   const next = filteredStudents.value[currentIndex.value + step]
   if (next) selectStudent(next)
 }
-function adoptAi() {
-  subjectiveScore.value = current.value?.aiScore ?? 0
-  comment.value = current.value?.aiComment ?? ''
-  ElMessage.success('已采用 AI 参考评分，可继续微调')
-}
-function saveGrade(next: boolean) {
+function adoptAi() { ElMessage.info('当前作业采用教师手动评分') }
+async function saveGrade(next: boolean) {
   if (!current.value) return
-  current.value.status = 'graded'
-  current.value.score = current.value.objective + subjectiveScore.value
-  ElMessage.success(`已保存 ${current.value.name} 的批阅结果：${current.value.score} 分`)
-  if (next) go(1)
+  try {
+    await gradeAssignmentSubmission(current.value.submissionId, subjectiveScore.value, comment.value)
+    current.value.status = 'graded'
+    current.value.score = subjectiveScore.value
+    ElMessage.success('评分已保存，学生端可以查看')
+    if (next) go(1)
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : '保存评分失败') }
 }
-function downloadFile(f: { name: string }) {
-  downloadText(f.name, `学生作业附件：${f.name}\n（接入对象存储后替换为真实文件流）`)
-  ElMessage.success(`开始下载「${f.name}」`)
+function previewAttachment(file: Attachment) {
+  if (previewDocument(file.url)) return
+  window.open(file.url, '_blank', 'noopener,noreferrer')
 }
-function remindMissing() { ElMessage.success('已向 2 名未提交学生推送提醒') }
-function autoGradeAll() { ElMessage.success('客观题已全部自动判分：38 份，平均 51.2 分') }
+function downloadFile(file: Attachment) { window.open(file.url, '_blank', 'noopener,noreferrer') }
+function remindMissing() { ElMessage.info('未提交提醒接口尚未接入') }
+function autoGradeAll() { ElMessage.info('作业自动评分接口尚未接入') }
+watch(homeworkFilter, () => { void loadSubmissions().catch(showError) })
+function showError(error: unknown) { ElMessage.error(error instanceof Error ? error.message : '加载作业提交失败') }
+onMounted(() => { void loadAssignments().then(loadSubmissions).catch(showError) })
 </script>
+
+
+
+
 
 <style scoped>
 .grade-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }

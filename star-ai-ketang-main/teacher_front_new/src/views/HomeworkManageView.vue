@@ -44,14 +44,19 @@
           <el-form-item label="作业名称">
             <el-input v-model="form.name" />
           </el-form-item>
-          <el-form-item label="所属章节">
-            <el-select v-model="form.chapter">
-              <el-option v-for="c in chaptersList" :key="c" :label="c" :value="c" />
+          <el-form-item label="Course">
+            <el-select v-model="selectedCourseId" style="width:100%" @change="loadCourseStructure">
+              <el-option v-for="c in availableCourses" :key="c.id" :label="c.title" :value="c.id" />
             </el-select>
           </el-form-item>
-          <el-form-item label="发布班级">
+          <el-form-item label="所属章节">
+            <el-select v-model="selectedChapterId">
+              <el-option v-for="c in chaptersList" :key="c.id" :label="c.title" :value="c.id" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="Section"><el-select v-model="selectedSectionId" clearable><el-option v-for="section in sectionsList" :key="section.id" :label="section.title" :value="section.id" /></el-select></el-form-item><el-form-item label="发布班级">
             <el-select v-model="form.classes" multiple>
-              <el-option v-for="c in classList" :key="c" :label="c" :value="c" />
+              <el-option v-for="c in classList" :key="c.id" :label="c.className" :value="c.id" />
             </el-select>
           </el-form-item>
           <el-form-item label="截止时间">
@@ -60,6 +65,7 @@
         </div>
 
         <el-divider content-position="left">题目来源</el-divider>
+        <el-form-item label="Assignment prompt"><el-input v-model="description" type="textarea" :rows="3" maxlength="2000" show-word-limit /></el-form-item>
         <el-radio-group v-model="form.source">
           <el-radio value="pick">从题库选题（当前已选 12 题 · 40 分）</el-radio>
           <el-radio value="random">随机抽题（每位学生题目不同）</el-radio>
@@ -184,88 +190,187 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { apiRequest } from '../api/client'
+import { auth } from '../stores/auth'
+import { homeworkContext } from '../stores/homework-context'
+import { createAssignment, listTeacherAssignments, publishAssignment, updateAssignment, type AssignmentPayload, type HomeworkAssignment } from '../api/homework-api'
 
 const emit = defineEmits<{ navigate: [id: string] }>()
+interface CourseOption { id: number; title: string }
+interface ClassOption { id: number; className: string }
+interface CourseChapter { id: number; title: string; sections: { id: number; title: string }[] }
+interface HomeworkItem { id: number; name: string; course: string; courseId: number; chapter: string; chapterId?: number; sectionId?: number; classIds: number[]; settings: Record<string, unknown>; description: string; count: number; score: number; deadline: string; submitted: number; total: number; status: string }
 
-const chaptersList = ['第 1 章 短视频认知', '第 2 章 拍摄与剪辑', '第 3 章 平台算法', '第 4 章 内容策划', '第 5 章 账号运营']
-const classList = ['2024级软件1班', '2024级软件2班', '2023级数媒1班']
-
-const homeworkList = ref([
-  { id: 1, name: '第 2 章作业 · 视频剪辑基础', course: '短视频制作与运营', chapter: '第 2 章', count: 8, score: 100, deadline: '11-21 22:00', submitted: 36, total: 40, status: '进行中' },
-  { id: 2, name: '第 1 章作业 · 平台认知测验', course: '短视频制作与运营', chapter: '第 1 章', count: 10, score: 100, deadline: '11-14 22:00', submitted: 40, total: 40, status: '已截止' },
-  { id: 4, name: '文案标题专项练习', course: '新媒体文案写作', chapter: '第 2 章', count: 6, score: 60, deadline: '11-12 22:00', submitted: 38, total: 40, status: '已截止' },
-  { id: 3, name: '第 3 章作业 · 算法理解（草稿）', course: '短视频制作与运营', chapter: '第 3 章', count: 0, score: 0, deadline: '未设置', submitted: 0, total: 40, status: '未发布' }
-])
-
-/* ---------- 课程筛选 ---------- */
+const availableCourses = ref<CourseOption[]>([])
+const classList = ref<ClassOption[]>([])
+const courseChapters = ref<CourseChapter[]>([])
+const selectedCourseId = ref<number | null>(null)
+const selectedChapterId = ref<number | null>(null)
+const selectedSectionId = ref<number | null>(null)
+const chaptersList = computed(() => courseChapters.value)
+const sectionsList = computed(() => courseChapters.value.find(ch => ch.id === selectedChapterId.value)?.sections ?? [])
+const homeworkList = ref<HomeworkItem[]>([])
 const courseFilter = ref('all')
 const courseOptions = computed(() => [...new Set(homeworkList.value.map(h => h.course))])
-const filteredHomework = computed(() =>
-  homeworkList.value.filter(h => courseFilter.value === 'all' || h.course === courseFilter.value)
-)
-const currentId = ref(1)
+const filteredHomework = computed(() => homeworkList.value.filter(h => courseFilter.value === 'all' || h.course === courseFilter.value))
+const currentId = ref(0)
 const createDialog = ref(false)
 const createMode = ref('blank')
 const newName = ref('')
-
+const description = ref('')
+const isNew = ref(false)
 const form = ref({
-  name: '第 2 章作业 · 视频剪辑基础',
-  chapter: '第 2 章 拍摄与剪辑',
-  classes: ['2024级软件1班', '2024级软件2班'],
-  deadline: new Date('2026-11-21T22:00:00'),
-  source: 'pick',
-  randomItems: [
-    { type: '单选题', count: 5, score: 4 },
-    { type: '多选题', count: 2, score: 8 },
-    { type: '简答题', count: 2, score: 22 }
-  ],
-  score: 100,
-  passScore: 60,
-  allowLate: true,
-  allowRetake: true,
-  retakeCount: 2,
-  autoGrade: true,
-  shuffle: true,
-  noPaste: true,
-  showAnswer: false,
-  showScore: true,
-  limitLength: true,
-  maxLength: 2000,
-  formats: ['文本', '附件', '图片']
+  name: '', chapter: '', classes: [] as number[], deadline: null as Date | null, source: 'pick',
+  randomItems: [{ type: '单选题', count: 0, score: 4 }, { type: '多选题', count: 0, score: 8 }, { type: '简答题', count: 0, score: 10 }],
+  score: 100, passScore: 60, allowLate: true, allowRetake: true, retakeCount: 2,
+  autoGrade: true, shuffle: false, noPaste: false, showAnswer: false, showScore: true,
+  limitLength: false, maxLength: 2000, formats: ['文本', '附件', '图片']
 })
 
-function selectHomework(id: number) {
-  currentId.value = id
-  const h = homeworkList.value.find(x => x.id === id)
-  if (h) {
-    form.value.name = h.name
-    form.value.score = h.score || 100
+function parseIdList(value: unknown): number[] {
+  if (Array.isArray(value)) return value.map(Number)
+  if (typeof value === 'string') { try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed.map(Number) : [] } catch { return [] } }
+  return []
+}
+function parseSettings(value: unknown): Record<string, unknown> {
+  if (value && typeof value === 'object') return value as Record<string, unknown>
+  if (typeof value === 'string') { try { return JSON.parse(value) as Record<string, unknown> } catch { return {} } }
+  return {}
+}
+function toItem(item: HomeworkAssignment): HomeworkItem {
+  return {
+    id: item.id, name: item.title, course: item.courseName, courseId: item.courseId,
+    chapter: courseChapters.value.find(ch => ch.id === item.chapterId)?.title ?? '', chapterId: item.chapterId,
+    sectionId: item.sectionId, classIds: parseIdList(item.classIds), settings: parseSettings(item.settings), description: item.description ?? '',
+    count: 0, score: item.totalScore, deadline: item.deadline ?? '未设置', submitted: item.submissionCount ?? 0,
+    total: 0, status: item.status === 'PUBLISHED' ? '进行中' : '未发布'
   }
 }
-function saveSettings(publish: boolean) {
-  if (publish) {
-    ElMessage.success('作业已发布，学生端已同步，系统将在截止前 24 小时自动提醒未交学生')
-    setTimeout(() => emit('navigate', 'grading'), 700)
-  } else {
-    ElMessage.success('作业设置已保存')
+async function loadResources() {
+  const [courseData, classData] = await Promise.all([
+    apiRequest<Array<{ id: number; title: string }>>(`/api/course/teacher/${auth.userId}?page=1&size=100`),
+    apiRequest<{ list: ClassOption[] }>('/api/classes/list?pageNum=1&pageSize=100')
+  ])
+  availableCourses.value = courseData.map(c => ({ id: c.id, title: c.title }))
+  classList.value = classData.list ?? []
+  if (!selectedCourseId.value && availableCourses.value.length) {
+    selectedCourseId.value = availableCourses.value[0].id
+    await loadCourseStructure()
   }
+}
+async function loadCourseStructure() {
+  if (!selectedCourseId.value) { courseChapters.value = []; return }
+  const structure = await apiRequest<{ chapters: CourseChapter[] }>(`/api/course/${selectedCourseId.value}/structure`)
+  courseChapters.value = structure.chapters ?? []
+  selectedChapterId.value = courseChapters.value[0]?.id ?? null
+  form.value.chapter = courseChapters.value[0]?.title ?? ''
+  selectedSectionId.value = null
+}
+async function loadAssignments() {
+  const items = await listTeacherAssignments()
+  homeworkList.value = items.map(toItem)
+  if (!currentId.value && homeworkList.value.length) selectHomework(homeworkList.value[0].id)
+}
+function selectHomework(id: number) {
+  currentId.value = id
+  isNew.value = false
+  const item = homeworkList.value.find(x => x.id === id)
+  if (!item) return
+  form.value.name = item.name
+  form.value.score = item.score || 100
+  form.value.classes = [...item.classIds]
+  description.value = item.description
+  form.value.deadline = item.deadline ? new Date(item.deadline) : null
+  const settings = item.settings
+  form.value.allowLate = settings.allowLate === true
+  form.value.allowRetake = settings.allowRetake === true
+  form.value.retakeCount = Number(settings.retakeCount ?? 2)
+  form.value.autoGrade = settings.autoGrade !== false
+  form.value.shuffle = settings.shuffle === true
+  form.value.noPaste = settings.noPaste === true
+  form.value.showAnswer = settings.showAnswer === true
+  form.value.showScore = settings.showScore !== false
+  form.value.limitLength = settings.limitLength === true
+  form.value.maxLength = Number(settings.maxLength ?? 2000)
+  if (Array.isArray(settings.formats)) form.value.formats = settings.formats as string[]
+  selectedCourseId.value = item.courseId
+  selectedChapterId.value = item.chapterId ?? null
+  selectedSectionId.value = item.sectionId ?? null
+  void loadCourseStructure().then(() => {
+    selectedChapterId.value = item.chapterId ?? null
+    form.value.chapter = courseChapters.value.find(ch => ch.id === item.chapterId)?.title ?? ''
+    selectedSectionId.value = item.sectionId ?? null
+  })
+}
+function makePayload(): AssignmentPayload {
+  const deadline = form.value.deadline ? form.value.deadline.toLocaleString('sv-SE').replace(' ', 'T') : null
+  return {
+    courseId: selectedCourseId.value!, chapterId: selectedChapterId.value, sectionId: selectedSectionId.value,
+    title: form.value.name.trim(), description: description.value.trim(), totalScore: form.value.score,
+    passScore: form.value.passScore, deadline, classIds: form.value.classes,
+    settings: { allowLate: form.value.allowLate, allowRetake: form.value.allowRetake, retakeCount: form.value.retakeCount,
+      autoGrade: form.value.autoGrade, shuffle: form.value.shuffle, noPaste: form.value.noPaste,
+      showAnswer: form.value.showAnswer, showScore: form.value.showScore, limitLength: form.value.limitLength,
+      maxLength: form.value.maxLength, formats: form.value.formats }
+  }
+}
+async function saveSettings(publish: boolean) {
+  if (!selectedCourseId.value) { ElMessage.warning('请先选择课程'); return }
+  if (!form.value.classes.length) { ElMessage.warning('请至少选择一个班级'); return }
+  if (!form.value.name.trim()) { ElMessage.warning('请输入作业名称'); return }
+  try {
+    const payload = makePayload()
+    if (isNew.value) {
+      currentId.value = await createAssignment(payload)
+      isNew.value = false
+    } else await updateAssignment(currentId.value, payload)
+    if (publish) await publishAssignment(currentId.value)
+    await loadAssignments()
+    ElMessage.success(publish ? '作业已发布，学生端已同步' : '作业草稿已保存')
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : '保存作业失败') }
 }
 function confirmCreate() {
   if (!newName.value.trim()) { ElMessage.warning('请输入作业名称'); return }
-  const id = Date.now()
-  homeworkList.value.unshift({
-    id, name: newName.value.trim(), course: '短视频制作与运营', chapter: '第 1 章', count: 0, score: 100,
-    deadline: '未设置', submitted: 0, total: 40, status: '未发布'
-  })
-  currentId.value = id
+  if (createMode.value !== 'blank') { ElMessage.info('作业库和 AI 出题接入即将补齐'); return }
+  isNew.value = true
+  currentId.value = 0
   form.value.name = newName.value.trim()
+  form.value.classes = []
+  description.value = ''
   createDialog.value = false
   newName.value = ''
-  ElMessage.success('作业已创建，请完成设置后发布')
+  ElMessage.success('已创建作业草稿，请配置内容和班级后保存')
 }
+onMounted(async () => {
+  try {
+    await loadResources()
+    await loadAssignments()
+    const target = homeworkContext.value
+    if (target) {
+      homeworkContext.value = null
+      selectedCourseId.value = target.courseId
+      await loadCourseStructure()
+      selectedChapterId.value = target.chapterId
+      selectedSectionId.value = target.sectionId
+      form.value.chapter = courseChapters.value.find(ch => ch.id === target.chapterId)?.title ?? ''
+      form.value.name = `${target.sectionTitle} 作业`
+      form.value.classes = []
+      description.value = target.description ?? ''
+      currentId.value = 0
+      isNew.value = true
+    }
+  }
+  catch (error) { ElMessage.error(error instanceof Error ? error.message : '加载课程或班级失败') }
+})
 </script>
+
+
+
+
+
+
 
 <style scoped>
 .hw-layout { display: grid; grid-template-columns: 320px 1fr; gap: 16px; align-items: start; }
