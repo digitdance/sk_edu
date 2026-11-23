@@ -515,8 +515,10 @@ import {
   Search as SearchIcon, ArrowLeft, Plus, MoreVertical,
   BookOpen, Globe, Code2, Truck, Lightbulb, Languages, CheckCircle2
 } from 'lucide-vue-next'
-import { courses, chapterPoints, portalCourseId, type Course, type Chapter, type SectionType } from '../stores/courses'
+import { courses, chapterPoints, portalCourseId, loadTeacherCourses, type Course, type Chapter, type SectionType } from '../stores/courses'
 import { openHomeworkForSection } from '../stores/homework-context'
+import { apiRequest } from '../api/client'
+import { auth } from '../stores/auth'
 
 const emit = defineEmits<{ navigate: [id: string] }>()
 
@@ -841,48 +843,23 @@ watch(createDialog, v => {
   }
 })
 
-function confirmCreateCourse() {
-  const id = Date.now()
-  let course: Course
-  if (createMode.value === 'template') {
-    const t = courseTemplates.find(x => x.id === tplId.value)
-    if (!t) { ElMessage.warning('请先从模板库选择一个课程模板'); return }
-    const name = newCourse.value.name.trim() || t.name
-    course = {
-      id, name,
-      code: `CSD-2026-${String(courses.value.length + 41).padStart(4, '0')}`,
-      status: '草稿', level: t.tag === '通识课' ? '通识' : '高职',
-      hours: t.hours, classes: 0, students: 0,
-      semester: newCourse.value.semester, updated: new Date().toISOString().slice(0, 10),
-      progress: Math.min(60 + t.chapters.length * 8, 95), icon: t.icon, cover: t.cover,
-      intro: `本课程基于系统模板「${t.name}」创建。${t.desc}`,
-      chapters: JSON.parse(JSON.stringify(t.chapters))
-    }
-  } else {
-    if (!newCourse.value.name.trim()) { ElMessage.warning('请输入课程名称'); return }
-    course = {
-      id, name: newCourse.value.name.trim(),
-      code: `CSD-2026-${String(courses.value.length + 41).padStart(4, '0')}`,
-      status: '草稿', level: newCourse.value.nature === '通识课' ? '通识' : '高职',
-      hours: newCourse.value.hours, classes: 0, students: 0,
-      semester: newCourse.value.semester, updated: new Date().toISOString().slice(0, 10),
-      progress: 5, icon: BookOpen, cover: coverPresets[newCourse.value.coverIdx],
-      intro: '（请在此处填写课程定位与教学目标，支持插入视频、图片与公式。）',
-      chapters: [
-        {
-          id: id + 1, title: '第 1 章 （待命名）', points: 0,
-          sections: [{ id: id + 2, title: '1.1 新小节', type: 'video', taskPoint: false, quiz: false, duration: '00:00' }]
-        }
-      ]
-    }
-  }
-  courses.value.unshift(course)
-  createDialog.value = false
-  createMode.value = 'blank'
-  tplId.value = null
-  newCourse.value = { name: '', nature: '专业必修', hours: 32, semester: '2026-2027-1', coverIdx: 0 }
-  openCourse(id)
-  ElMessage.success(`课程「${course.name}」已创建，开始建设章节内容吧`)
+async async async async async function confirmCreateCourse() {
+  const template = createMode.value === 'template' ? courseTemplates.find(x => x.id === tplId.value) : undefined
+  if (createMode.value === 'template' && !template) { ElMessage.warning('请先从模板库选择一个课程模板'); return }
+  const name = newCourse.value.name.trim() || template?.name || ''
+  if (!name) { ElMessage.warning('请输入课程名称'); return }
+  try {
+    const id = await apiRequest<number>('/api/course', { method: 'POST', body: {
+      title: name, subtitle: '', description: template ? `基于课程模板「${template.name}」创建。${template.desc}` : '',
+      coverImage: '', price: 0, courseType: 0, difficulty: 2, teacherId: auth.userId, tags: []
+    } })
+    const chaptersToCreate = template?.chapters.map(ch => ch.title) ?? ['第 1 章']
+    for (const [index, title] of chaptersToCreate.entries()) await apiRequest(`/api/course/${id}/chapter`, { method: 'POST', body: { title, description: '', sort: index + 1 } })
+    await loadTeacherCourses(auth.userId)
+    createDialog.value = false; createMode.value = 'blank'; tplId.value = null
+    newCourse.value = { name: '', nature: '专业必修', hours: 32, semester: '2026-2027-1', coverIdx: 0 }
+    openCourse(id); ElMessage.success(`课程「${name}」已创建`)
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : '课程创建失败') }
 }
 
 const manageRows = computed(() =>
@@ -1087,22 +1064,36 @@ function confirmInsert() {
   ElMessage.success(n ? `已插入 ${n} 个资源到当前章节` : '未选择资源')
   resourcePool.value.forEach(r => (r.checked = false))
 }
-function confirmAddChapter() {
-  if (!newChapterName.value.trim()) { ElMessage.warning('请输入章节名称'); return }
-  activeCourse.value?.chapters.push({
-    id: Date.now(), title: newChapterName.value.trim(), points: 0,
-    sections: [{ id: Date.now() + 1, title: '新小节', type: 'video', taskPoint: false, quiz: false, duration: '00:00' }]
-  })
-  chapterDialog.value = false
-  newChapterName.value = ''
-  ElMessage.success(`章节已创建到「${activeCourse.value?.name}」`)
+async async async async async function confirmAddChapter() {
+  const course = activeCourse.value
+  if (!course || !newChapterName.value.trim()) { ElMessage.warning('请输入章节名称'); return }
+  try {
+    await apiRequest(`/api/course/${course.id}/chapter`, { method: 'POST', body: { title: newChapterName.value.trim(), description: '', sort: course.chapters.length + 1 } })
+    await loadTeacherCourses(auth.userId); chapterDialog.value = false; newChapterName.value = ''
+    ElMessage.success('章节已保存到课程')
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : '章节创建失败') }
 }
 function confirmAddAssistant() {
   assistantDialog.value = false
   ElMessage.success(`已发送${assistantRole.value}邀请，待对方确认后生效`)
 }
-function saveDraft() { ElMessage.success(`「${activeCourse.value?.name}」草稿已保存 · ` + new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })) }
-function publish() { ElMessage.success(`「${activeCourse.value?.name}」已发布，学生端立即同步更新`) }
+async function saveDraft() {
+  const c = activeCourse.value
+  if (!c) return
+  try {
+    await apiRequest(`/api/course/${c.id}`, { method: 'PUT', body: { title: c.name, subtitle: '', description: c.intro, coverImage: '', price: 0, courseType: 0, difficulty: 2, tags: [] } })
+    ElMessage.success('Course draft saved')
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : 'Save failed') }
+}
+async function publish() {
+  const c = activeCourse.value
+  if (!c) return
+  try {
+    await apiRequest(`/api/course/${c.id}/publish`, { method: 'POST' })
+    c.status = '宸插彂甯?
+    ElMessage.success('Course published')
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : 'Publish failed') }
+}
 function saveSettings() { ElMessage.success('课程设置已保存并应用到该课程全部班级') }
 function resetSettings() { ElMessage.info('已恢复为系统默认设置') }
 </script>

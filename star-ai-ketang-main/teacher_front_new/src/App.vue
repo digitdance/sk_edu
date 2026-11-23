@@ -23,6 +23,7 @@ import SidebarNav from './components/SidebarNav.vue'
 import TopBar from './components/TopBar.vue'
 
 import CourseBuilderView from './views/CourseBuilderView.vue'
+import ClassManagementView from './views/ClassManagementView.vue'
 import CoursePortalEditorView from './views/CoursePortalEditorView.vue'
 import ResourceLibraryView from './views/ResourceLibraryView.vue'
 import LearningControlView from './views/LearningControlView.vue'
@@ -45,9 +46,10 @@ import { loadTeacherCourses } from './stores/courses'
 export type ViewId =
   | 'course' | 'portal' | 'resources' | 'control' | 'bank' | 'homework'
   | 'grading' | 'homework-library' | 'exam' | 'grades' | 'ai-prep' | 'ai-analysis' | 'ai-qa' | 'users'
-  | 'profile' | 'settings'
+  | 'classes' | 'profile' | 'settings'
 
 const viewMeta: Record<ViewId, { title: string; subtitle: string; component: unknown }> = {
+  classes: { title: 'Classes', subtitle: 'Manage classes, members, and course links', component: ClassManagementView },
   course: { title: '课程建设', subtitle: '我的全部课程 · 内容编辑、章节任务点与课程设置', component: CourseBuilderView },
   portal: { title: '课程门户预览', subtitle: '学生端上课页面 · 教师所见即所得编辑', component: CoursePortalEditorView },
   resources: { title: '资源库', subtitle: '个人云盘、课程资源、转码与共享管理', component: ResourceLibraryView },

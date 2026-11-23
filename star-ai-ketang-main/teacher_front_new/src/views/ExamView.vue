@@ -11,11 +11,7 @@
     <div class="panel">
       <div class="toolbar">
         <el-input v-model="keyword" placeholder="搜索考试名称" :prefix-icon="SearchIcon" style="width:220px" clearable />
-        <el-select v-model="courseFilter" style="width:170px">
-          <el-option label="全部课程" value="all" />
-          <el-option label="短视频制作与运营" value="短视频制作与运营" />
-          <el-option label="新媒体文案写作" value="新媒体文案写作" />
-        </el-select>
+        <el-select v-model="courseFilter" style="width:170px"><el-option label="All courses" value="all" /><el-option v-for="course in courseOptions" :key="course" :label="course" :value="course" /></el-select>
         <el-select v-model="statusFilter" style="width:120px">
           <el-option label="全部状态" value="all" />
           <el-option label="未开始" value="未开始" />
@@ -67,17 +63,8 @@
           <el-form-item label="考试名称">
             <el-input v-model="examForm.name" placeholder="例如：期末考试（线上）" />
           </el-form-item>
-          <el-form-item label="所属课程">
-            <el-select v-model="examForm.course">
-              <el-option label="短视频制作与运营" value="短视频制作与运营" />
-              <el-option label="新媒体文案写作" value="新媒体文案写作" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="参考班级">
-            <el-select v-model="examForm.classes" multiple>
-              <el-option v-for="c in classList" :key="c" :label="c" :value="c" />
-            </el-select>
-          </el-form-item>
+          <el-form-item label="Course"><el-select v-model="examForm.courseId"><el-option v-for="c in courses" :key="c.id" :label="c.title" :value="c.id" /></el-select></el-form-item>
+          <el-form-item label="Classes"><el-select v-model="examForm.classes" multiple><el-option v-for="c in classList" :key="c.id" :label="c.className" :value="c.id" /></el-select></el-form-item>
           <el-form-item label="考试时长（分钟）">
             <el-input-number v-model="examForm.duration" :min="15" :max="300" style="width:100%" />
           </el-form-item>
@@ -85,13 +72,7 @@
             <el-date-picker v-model="examForm.range" type="datetimerange" range-separator="至"
               start-placeholder="开始时间" end-placeholder="结束时间" style="width:100%" />
           </el-form-item>
-          <el-form-item label="试卷">
-            <el-select v-model="examForm.paper">
-              <el-option label="期末考试模拟卷（40 题 / 100 分）" value="p1" />
-              <el-option label="期中模拟卷 A 卷（30 题 / 100 分）" value="p2" />
-              <el-option label="＋ 随机组卷" value="new" />
-            </el-select>
-          </el-form-item>
+          <el-form-item label="Paper"><el-select v-model="examForm.paper" clearable><el-option v-for="p in papers" :key="p.id" :label="p.title" :value="p.id" /></el-select></el-form-item>
         </div>
         <div class="exam-switches">
           <div class="es-row">
@@ -150,102 +131,82 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search as SearchIcon } from 'lucide-vue-next'
+import { apiRequest } from '../api/client'
+import { auth } from '../stores/auth'
 
-interface Exam {
-  id: number; name: string; course: string; start: string; end: string;
-  duration: string; status: string; attend: number; avg: number
-}
-
+interface CourseOption { id: number; title: string }
+interface ClassOption { id: string; className: string }
+interface PaperOption { id: number; title: string; totalScore?: number; durationMin?: number }
+interface PaperPage { records: PaperOption[] }
+interface Exam { id: number; name: string; course: string; courseId: number; paperId?: number; classIds?: number[]; startIso: string; endIso: string; start: string; end: string; duration: string; status: string; attend: number; avg: number }
 const keyword = ref('')
 const courseFilter = ref('all')
 const statusFilter = ref('all')
 const createDialog = ref(false)
 const analysisDrawer = ref(false)
 const analysisExam = ref<Exam | null>(null)
-const classList = ['2024级软件1班', '2024级软件2班', '2023级数媒1班']
-
-const exams = ref<Exam[]>([
-  { id: 1, name: '第 3 章章节测验', course: '短视频制作与运营', start: '11-24 10:00', end: '11-24 22:00', duration: '30 分钟', status: '未开始', attend: 0, avg: 0 },
-  { id: 2, name: '期中考试（线上）', course: '短视频制作与运营', start: '11-10 14:00', end: '11-10 16:00', duration: '120 分钟', status: '已结束', attend: 78, avg: 82.4 },
-  { id: 3, name: '第 2 章章节测验', course: '短视频制作与运营', start: '11-05 19:00', end: '11-06 22:00', duration: '25 分钟', status: '已结束', attend: 80, avg: 86.1 },
-  { id: 4, name: '新媒体文案 · 随堂测', course: '新媒体文案写作', start: '11-19 16:00', end: '11-19 18:00', duration: '20 分钟', status: '进行中', attend: 36, avg: 0 }
-])
-
-const examForm = ref({
-  name: '', course: '短视频制作与运营', classes: [] as string[],
-  duration: 120, range: null as [Date, Date] | null, paper: 'p1',
-  multiPaper: true, autoSwitch: true, antiSwitch: true
-})
-
-const filteredExams = computed(() =>
-  exams.value.filter(e =>
-    (courseFilter.value === 'all' || e.course === courseFilter.value) &&
-    (statusFilter.value === 'all' || e.status === statusFilter.value) && e.name.includes(keyword.value)
-  )
-)
-
-const scoreDist = [
-  { label: '<60', pct: 14 }, { label: '60-70', pct: 22 }, { label: '70-80', pct: 38 },
-  { label: '80-90', pct: 56 }, { label: '90+', pct: 30 }
-]
-const questionAnalysis = [
-  { no: 12, stem: '平台完播率的计算公式', type: '填空', rate: 42, diff: 0.61 },
-  { no: 27, stem: 'J-cut 转场技巧判断', type: '判断', rate: 58, diff: 0.45 },
-  { no: 8, stem: '有效互动行为识别', type: '多选', rate: 66, diff: 0.52 },
-  { no: 3, stem: '黄金三秒原则', type: '判断', rate: 91, diff: 0.28 },
-  { no: 1, stem: '冷启动流量池核心指标', type: '单选', rate: 94, diff: 0.22 }
-]
-
-function openCreate() { createDialog.value = true }
+const exams = ref<Exam[]>([])
+const courses = ref<CourseOption[]>([])
+const classList = ref<ClassOption[]>([])
+const papers = ref<PaperOption[]>([])
 const editingExam = ref<Exam | null>(null)
-function confirmCreate() {
-  if (!examForm.value.name.trim()) { ElMessage.warning('请输入考试名称'); return }
-  if (editingExam.value) {
-    Object.assign(editingExam.value, {
-      name: examForm.value.name.trim(), course: examForm.value.course,
-      duration: examForm.value.duration + ' 分钟'
-    })
-    createDialog.value = false
-    editingExam.value = null
-    ElMessage.success('考试信息已保存，学生端同步更新')
-    return
-  }
-  exams.value.unshift({
-    id: Date.now(), name: examForm.value.name.trim(), course: examForm.value.course,
-    start: '待定', end: '待定', duration: examForm.value.duration + ' 分钟',
-    status: '未开始', attend: 0, avg: 0
-  })
-  createDialog.value = false
-  ElMessage.success(`考试已发布${examForm.value.multiPaper ? '，已启用随机 A/B 卷' : ''}，学生端同步可见`)
+const examForm = ref({ name: '', courseId: 0, classes: [] as string[], duration: 120, range: null as [Date, Date] | null, paper: 0, multiPaper: false, autoSwitch: true, antiSwitch: true })
+const courseOptions = computed(() => courses.value.map(c => c.title))
+const filteredExams = computed(() => exams.value.filter(e => (courseFilter.value === 'all' || e.course === courseFilter.value) && (statusFilter.value === 'all' || e.status === statusFilter.value) && e.name.includes(keyword.value)))
+const scoreDist = [{ label: '<60', pct: 0 }, { label: '60-70', pct: 0 }, { label: '70-80', pct: 0 }, { label: '80-90', pct: 0 }, { label: '90+', pct: 0 }]
+const questionAnalysis = ref<{ no: number; stem: string; type: string; rate: number; diff: number }[]>([])
+
+function displayTime(value: string) { return value ? new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '—' }
+function localDateTime(value: Date) { const pad = (n: number) => String(n).padStart(2, '0'); return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}T${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}` }
+function mapExam(row: Record<string, unknown>): Exam {
+  const start = String(row.start ?? ''), end = String(row.end ?? '')
+  const now = Date.now(), startAt = new Date(start).getTime(), endAt = new Date(end).getTime()
+  let classIds: number[] = []; try { classIds = JSON.parse(String(row.classIds ?? '[]')).map(Number) } catch { /* retain empty selection */ }
+  return { id: Number(row.id), name: String(row.name), course: String(row.course), courseId: Number(row.courseId), paperId: Number(row.paperId) || undefined, classIds,
+    startIso: start, endIso: end,
+    start: displayTime(start), end: displayTime(end), duration: `${row.duration} 分钟`, status: now < startAt ? '未开始' : now <= endAt ? '进行中' : '已结束', attend: Number(row.attend ?? 0), avg: Number(row.avg ?? 0) }
 }
-function editExam(row: Exam) {
-  editingExam.value = row
-  examForm.value = {
-    ...examForm.value,
-    name: row.name, course: row.course,
-    duration: parseInt(row.duration) || 120
-  }
-  createDialog.value = true
+async function load() {
+  try {
+    const [examRows, courseRows, classPage, paperRows] = await Promise.all([
+      apiRequest<Record<string, unknown>[]>('/api/exams'),
+      apiRequest<CourseOption[]>(`/api/course/teacher/${auth.userId}?page=1&size=100`),
+      apiRequest<{ list: ClassOption[] }>('/api/classes/list?pageNum=1&pageSize=100'),
+      apiRequest<PaperPage>('/api/exam-papers?pageNum=1&pageSize=100')
+    ])
+    exams.value = examRows.map(mapExam); courses.value = courseRows; classList.value = classPage.list ?? []; papers.value = paperRows.records ?? []
+    if (!examForm.value.courseId) examForm.value.courseId = courses.value[0]?.id ?? 0
+    if (!examForm.value.paper) examForm.value.paper = papers.value[0]?.id ?? 0
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : '考试数据加载失败') }
 }
-function monitorExam(row: Exam) {
-  ElMessage.info(`「${row.name}」实时监考台：在线 36 人，切屏告警 2 人`)
+function openCreate() { editingExam.value = null; examForm.value = { name: '', courseId: courses.value[0]?.id ?? 0, classes: [], duration: 120, range: null, paper: papers.value[0]?.id ?? 0, multiPaper: false, autoSwitch: true, antiSwitch: true }; createDialog.value = true }
+async function confirmCreate() {
+  if (!examForm.value.name.trim() || !examForm.value.courseId || !examForm.value.range || !examForm.value.classes.length) { ElMessage.warning('请完整填写考试名称、课程、班级和时间'); return }
+  try {
+    const [startsAt, endsAt] = examForm.value.range
+    const body = { title: examForm.value.name.trim(), courseId: examForm.value.courseId, paperId: examForm.value.paper || null, startsAt: localDateTime(startsAt), endsAt: localDateTime(endsAt), durationMinutes: examForm.value.duration, classIds: examForm.value.classes.map(Number), settings: { multiPaper: examForm.value.multiPaper, autoSwitch: examForm.value.autoSwitch, antiSwitch: examForm.value.antiSwitch } }
+    if (editingExam.value) await apiRequest(`/api/exams/${editingExam.value.id}`, { method: 'PUT', body })
+    else await apiRequest('/api/exams', { method: 'POST', body })
+    createDialog.value = false; await load(); ElMessage.success('考试安排已保存')
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : '保存考试失败') }
 }
-function deleteExam(row: Exam) {
-  ElMessageBox.confirm(`确认删除「${row.name}」？已产生的成绩数据将保留。`, '删除考试', { type: 'warning' })
-    .then(() => {
-      exams.value = exams.value.filter(e => e.id !== row.id)
-      ElMessage.success('已删除')
-    })
-    .catch(() => undefined)
+function editExam(row: Exam) { editingExam.value = row; examForm.value = { ...examForm.value, name: row.name, courseId: row.courseId, paper: row.paperId ?? 0, classes: (row.classIds ?? []).map(String), duration: parseInt(row.duration) || 120, range: [new Date(row.startIso), new Date(row.endIso)] }; createDialog.value = true }
+function monitorExam(row: Exam) { ElMessage.info(`「${row.name}」已参考 ${row.attend} 人；切屏事件统计将在监考接口接入后显示。`) }
+async function deleteExam(row: Exam) {
+  try { await ElMessageBox.confirm(`确认删除「${row.name}」？`, '删除考试', { type: 'warning' }); await apiRequest(`/api/exams/${row.id}`, { method: 'DELETE' }); await load(); ElMessage.success('考试已删除') }
+  catch (error) { if (error instanceof Error) ElMessage.error(error.message) }
 }
-function openAnalysis(row: Exam) {
-  analysisExam.value = row
-  analysisDrawer.value = true
-}
+function openAnalysis(row: Exam) { analysisExam.value = row; analysisDrawer.value = true }
+onMounted(() => { void load() })
 </script>
+
+
+
+
+
 
 <style scoped>
 .stats-row .panel { margin-bottom: 0; }

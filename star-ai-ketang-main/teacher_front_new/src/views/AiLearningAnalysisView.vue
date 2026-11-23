@@ -7,7 +7,7 @@
           <div class="sub">按班级 / 学生筛选 · 成绩趋势 · AI 批改校准 · 错题与薄弱知识点 · 分层教学建议</div>
         </div>
         <div class="filters">
-          <select v-model="cls" class="select"><option v-for="c in classes" :key="c">{{ c }}</option></select>
+          <select v-model="cls" class="select"><option v-for="c in classOptions" :key="c.id" :value="c.id">{{ c.className }}</option></select>
           <select v-model="stu" class="select"><option>全班</option><option v-for="s in students" :key="s">{{ s }}</option></select>
           <select v-model="period" class="select"><option v-for="p in periods" :key="p">{{ p }}</option></select>
           <select v-model="hw" class="select"><option v-for="h in homeworkTypes" :key="h">{{ h }}</option></select>
@@ -16,10 +16,10 @@
       </div>
 
       <div class="kpis">
-        <div class="card card-pad"><div class="muted">学生数</div><div class="kpi-v">42</div><div class="sub">到课率 95%</div></div>
-        <div class="card card-pad"><div class="muted">作业提交率</div><div class="kpi-v">90.5%</div><div class="sub">较上周期 +3.2%</div></div>
-        <div class="card card-pad"><div class="muted">平均分</div><div class="kpi-v">81.6</div><div class="sub">及格率 92.9%</div></div>
-        <div class="card card-pad"><div class="muted">主观题得分率</div><div class="kpi-v">76.4%</div><div class="sub">较上周期 +5.1%</div></div>
+        <div class="card card-pad"><div class="muted">学生数</div><div class="kpi-v">{{ overview.memberCount }}</div><div class="sub">Class members</div></div>
+        <div class="card card-pad"><div class="muted">作业提交率</div><div class="kpi-v">{{ overview.totalActivities }}</div><div class="sub">Recorded learning activities</div></div>
+        <div class="card card-pad"><div class="muted">平均分</div><div class="kpi-v">{{ Number(overview.avgScoreRate || 0).toFixed(1) }}%</div><div class="sub">Class average score rate</div></div>
+        <div class="card card-pad"><div class="muted">主观题得分率</div><div class="kpi-v">{{ overview.avgDurationText }}</div><div class="sub">Average study duration</div></div>
       </div>
 
       <div class="cols">
@@ -159,7 +159,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { apiRequest } from '../api/client'
 import { ElMessage } from 'element-plus'
 import AiIcon from '../components/AiIcon.vue'
 import AiLineChart from '../components/AiLineChart.vue'
@@ -168,7 +169,6 @@ import { aiHandoff } from '../stores/aiHandoff'
 import {
   adviceList,
   analysisItems,
-  classes,
   errorTypes,
   gradingRows,
   homeworkTypes,
@@ -185,7 +185,9 @@ const emit = defineEmits<{ navigate: [view: string] }>()
 
 type Metric = 'score' | 'rate' | 'submit'
 
-const cls = ref(classes[0])
+const cls = ref('')
+const classOptions = ref<Array<{ id: string; className: string }>>([])
+const overview = ref({ memberCount: 0, totalActivities: 0, avgScoreRate: 0, avgDurationText: '-' })
 const stu = ref('全班')
 const period = ref(periods[0])
 const hw = ref(homeworkTypes[0])
@@ -203,9 +205,22 @@ const modes = [
 ]
 const modeName = computed(() => modes.find((m) => m.id === mode.value)?.name ?? '')
 const trend = computed(() => trendSets[metric.value])
+watch(cls, async (id) => {
+  if (!id) return
+  try { overview.value = await apiRequest<typeof overview.value>(`/api/analytics/class/${id}/overview`) }
+  catch (error) { ElMessage.error(error instanceof Error ? error.message : 'Class analytics could not be loaded') }
+})
 const weakLow = computed(() => weakPoints.filter((w) => w.mastery < 60))
 const confirmedCount = computed(() => grading.filter((g) => g.done).length)
 
+onMounted(async () => {
+  try {
+    const page = await apiRequest<{ list: Array<{ id: string; className: string }> }>('/api/classes/list?pageNum=1&pageSize=100')
+    classOptions.value = page.list ?? []
+    if (!cls.value) cls.value = classOptions.value[0]?.id ?? ''
+    if (cls.value) overview.value = await apiRequest<typeof overview.value>(`/api/analytics/class/${cls.value}/overview`)
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : 'Class analytics could not be loaded') }
+})
 function applyMode(id: string) {
   mode.value = id
   const delta = modes.find((m) => m.id === id)?.delta ?? 0
@@ -214,7 +229,7 @@ function applyMode(id: string) {
   })
 }
 function resetFilters() {
-  cls.value = classes[0]
+  cls.value = classOptions.value[0]?.id ?? ''
   stu.value = '全班'
   period.value = periods[0]
   hw.value = homeworkTypes[0]

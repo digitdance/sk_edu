@@ -96,6 +96,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Heart, Flag, Clock3, LayoutGrid, ShieldAlert } from 'lucide-vue-next'
 import { takingExam } from '../../stores/exams'
+import { apiRequest } from '../../api/client'
 import { maxViolations, violationCount, setForceSubmitHandler, stopProctoring } from '../../utils/proctor'
 
 const emit = defineEmits<{ navigate: [id: string] }>()
@@ -103,7 +104,7 @@ const emit = defineEmits<{ navigate: [id: string] }>()
 const exam = takingExam
 
 type Kind = 'single' | 'multi' | 'judge' | 'blank' | 'essay'
-interface Question {
+interface Question { id?: number;
   kind: Kind; stem: string; options?: string[]; score: number
   my: string; mys: string[]; fav: boolean; marked: boolean
 }
@@ -209,23 +210,53 @@ function submitExam(auto: boolean) {
     .then(() => doSubmit('manual'))
     .catch(() => undefined)
 }
-function doSubmit(how: 'manual' | 'auto' | 'forced') {
+async function doSubmit(how: 'manual' | 'auto' | 'forced') {
   if (submitted) return
   submitted = true
   stopTimer()
   stopProctoring()
-  if (exam.value) { exam.value.status = 'done'; exam.value.myScore = 20 }
-  const scoreText = '客观题得分 20 / 24，简答题待教师批阅'
-  if (how === 'forced') ElMessage.error(`因多次切屏被强制交卷，切屏记录（${violationCount.value} 次）已上报教师端。${scoreText}`)
-  else ElMessage.success(how === 'auto' ? `时间到，系统已自动收卷。${scoreText}` : `交卷成功！${scoreText}`)
-  emit('navigate', 's-exams')
+  try {
+    if (!exam.value) throw new Error('考试信息不存在')
+    const answers: Record<string, unknown> = {}
+    sections.value.forEach((section, si) => section.questions.forEach((q, qi) => {
+      answers[q.id ? String(q.id) : `${si}-${qi}`] = q.kind === 'multi' ? q.mys : q.my
+    }))
+    await apiRequest(`/api/exams/${exam.value.id}/submissions`, { method: 'POST', body: { answers } })
+    exam.value.status = 'done'
+    if (how === 'forced') ElMessage.error(`切屏次数已达上限，系统已收卷并记录。`)
+    else ElMessage.success(how === 'auto' ? '时间到，系统已自动收卷。' : '交卷成功，答案已保存。')
+    emit('navigate', 's-exams')
+  } catch (error) {
+    submitted = false
+    ElMessage.error(error instanceof Error ? error.message : '交卷失败，请检查网络后重试')
+    startTimer()
+  }
 }
 
-onMounted(() => {
+async function loadPaper() {
+  if (!exam.value?.paperId) return
+  const result = await apiRequest<{ sections: Array<{ id: number; title: string; description?: string; questionType?: string; questions: Array<{ id: number; kind: string; stem: string; score: number; options: unknown }> }> }>(`/api/exams/${exam.value.id}/paper`)
+  const kind = (value: string): Kind => value === 'MULTI_CHOICE' ? 'multi' : value === 'TRUE_FALSE' ? 'judge' : value === 'SINGLE_CHOICE' ? 'single' : value === 'FILL_BLANK' ? 'blank' : 'essay'
+  const loaded = (result.sections ?? []).map(section => ({
+    type: section.title || section.questionType || 'Questions', desc: section.description ?? '',
+    questions: (section.questions ?? []).map(question => {
+      const options = Array.isArray(question.options) ? question.options.map((option: unknown) => {
+        if (typeof option === 'string') return option
+        if (option && typeof option === 'object') { const item = option as Record<string, unknown>; return `${item.label ?? ''} ${item.text ?? ''}`.trim() }
+        return String(option)
+      }) : []
+      return { ...mk(kind(question.kind), question.stem, question.score, options), id: question.id }
+    })
+  }))
+  if (loaded.length) sections.value = loaded
+}
+
+onMounted(async () => {
+  try { await loadPaper() } catch (error) { ElMessage.error(error instanceof Error ? error.message : 'Paper load failed') }
   setForceSubmitHandler(() => doSubmit('forced'))
   startTimer()
   window.scrollTo({ top: 0 })
-})
+}))))
 onBeforeUnmount(() => {
   stopTimer()
   setForceSubmitHandler(null)

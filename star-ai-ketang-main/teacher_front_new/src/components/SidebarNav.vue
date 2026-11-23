@@ -59,6 +59,7 @@ const groups: NavGroup[] = [
     label: '教学',
     items: [
       { id: 'course', label: '课程建设', icon: BookOpen },
+      { id: 'classes', label: 'Classes', icon: Users },
       { id: 'resources', label: '资源库', icon: FolderOpen },
       { id: 'control', label: '学习控制', icon: SlidersHorizontal }
     ]

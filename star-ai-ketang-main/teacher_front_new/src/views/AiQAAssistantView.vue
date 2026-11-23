@@ -167,6 +167,7 @@ import { computed, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import AiIcon from '../components/AiIcon.vue'
 import { defaultBoundary, kbIndex, kbSources, qaRecords, qaSamples, type QaRecord } from '../data/aiMock'
+import { apiRequest } from '../api/client'
 
 interface ChatMsg {
   role: 'u' | 'b'
@@ -196,6 +197,7 @@ const newWord = ref('')
 
 const chat = ref<ChatMsg[]>([])
 const draft = ref('')
+const aiSessionId = ref<number | null>(null)
 
 const recFilter = ref('all')
 const recFilters = [
@@ -243,32 +245,52 @@ function judge(q: string): { status: string; conf: number; a: string; src: strin
   }
   return { status: 'out', conf: best?.conf ?? 15, a: boundary.fallback, src: [] }
 }
-function ask(q: string) {
+async function ask(q: string) {
   const text = q.trim()
   if (!text) return
-  if (!qaOn.value) {
-    ElMessage.warning('学生端问答已关闭，请先开启开关')
-    return
-  }
+  if (!qaOn.value) { ElMessage.warning('Student Q&A is disabled'); return }
   chat.value.push({ role: 'u', text })
-  const r = judge(text)
-  chat.value.push({ role: 'b', text: r.a, src: r.src[0] })
-  records.unshift({
-    id: Date.now(),
-    student: '预览·教师',
-    cls: '—',
-    time: new Date().toLocaleString('zh-CN', { hour12: false }).replaceAll('/', '-'),
-    q: text,
-    a: r.a,
-    src: r.src,
-    conf: r.conf,
-    status: r.status,
-    fwd: r.status === 'out' && boundary.outAction === 'forward',
-    teacher: '',
-    note: r.status === 'blocked' ? '触发拦截策略' : '',
-    checked: false,
-  })
   draft.value = ''
+  const local = judge(text)
+  let answer = local.a
+  let status = local.status
+  let sources = local.src
+  try {
+    if (local.status !== 'blocked') {
+      if (!aiSessionId.value) {
+        const session = await apiRequest<{ sessionId: number }>('/api/ai/chat/sessions', { method: 'POST', body: {} })
+        aiSessionId.value = session.sessionId
+      }
+      const base = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+      const token = localStorage.getItem('teacher-access-token')
+      const context = kbIndex.map(item => `${item.src}: ${item.a}`).join('\n')
+      const response = await fetch(`${base}/api/ai/chat/sessions/${aiSessionId.value}/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ message: text, systemPrompt: `Answer using the course knowledge context. If it does not support an answer, say so clearly. Do not provide direct answers to active exams or graded homework.\n\nCourse knowledge context:\n${context}` })
+      })
+      if (!response.ok || !response.body) throw new Error(`AI service returned ${response.status}`)
+      const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let output = ''
+      while (true) {
+        const { value, done } = await reader.read(); if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split(/\r?\n/); buffer = lines.pop() ?? ''
+        for (const line of lines) if (line.startsWith('data:')) {
+          const data = line.slice(5).trim(); if (!data || data === '[DONE]') continue
+          try { const parsed = JSON.parse(data); output += String(parsed.content ?? parsed.text ?? parsed.delta ?? '') } catch { output += data }
+        }
+      }
+      if (output.trim()) { answer = output.trim(); status = 'answered'; sources = local.src }
+    }
+  } catch (error) { ElMessage.warning(error instanceof Error ? `AI unavailable; using configured fallback: ${error.message}` : 'AI unavailable; using configured fallback') }
+  chat.value.push({ role: 'b', text: answer, src: sources[0] })
+  records.unshift({
+    id: Date.now(), student: 'Teacher preview', cls: '鈥?,
+    time: new Date().toLocaleString('zh-CN', { hour12: false }).replaceAll('/', '-'),
+    q: text, a: answer, src: sources, conf: local.conf, status,
+    fwd: status === 'out' && boundary.outAction === 'forward', teacher: '',
+    note: status === 'blocked' ? 'Blocked by configured policy' : '', checked: false
+  })
 }
 
 function bindAll() {

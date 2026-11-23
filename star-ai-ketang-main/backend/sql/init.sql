@@ -4917,3 +4917,33 @@ CREATE TABLE IF NOT EXISTS homework_assignment_submission (
 );
 CREATE INDEX IF NOT EXISTS idx_homework_submission_assignment ON homework_assignment_submission(assignment_id, submitted_at);
 CREATE INDEX IF NOT EXISTS idx_homework_submission_student ON homework_assignment_submission(student_id, submitted_at DESC);
+
+-- Teacher exam schedules and student answer submissions.
+CREATE TABLE IF NOT EXISTS exam_schedule (
+  id BIGSERIAL PRIMARY KEY,
+  teacher_id BIGINT NOT NULL REFERENCES "user"(id),
+  course_id BIGINT NOT NULL REFERENCES course(id),
+  paper_id BIGINT REFERENCES exam_paper(id),
+  title VARCHAR(255) NOT NULL,
+  starts_at TIMESTAMP NOT NULL,
+  ends_at TIMESTAMP NOT NULL,
+  duration_minutes INTEGER NOT NULL CHECK (duration_minutes > 0),
+  class_ids_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  settings_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  status VARCHAR(20) NOT NULL DEFAULT 'SCHEDULED',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CHECK (ends_at > starts_at)
+);
+CREATE INDEX IF NOT EXISTS idx_exam_schedule_teacher ON exam_schedule(teacher_id, starts_at DESC);
+CREATE INDEX IF NOT EXISTS idx_exam_schedule_course ON exam_schedule(course_id, starts_at);
+CREATE TABLE IF NOT EXISTS exam_submission (
+  id BIGSERIAL PRIMARY KEY,
+  exam_id BIGINT NOT NULL REFERENCES exam_schedule(id) ON DELETE CASCADE,
+  student_id BIGINT NOT NULL REFERENCES "user"(id),
+  answers_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  score NUMERIC(8,2),
+  submitted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (exam_id, student_id)
+);
+CREATE INDEX IF NOT EXISTS idx_exam_submission_student ON exam_submission(student_id, submitted_at DESC);

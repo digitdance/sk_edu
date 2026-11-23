@@ -63,7 +63,7 @@
 
         <div v-if="busy" class="skel"><i v-for="n in 7" :key="n" :style="{ width: (92 - n * 7) + '%' }"></i></div>
 
-        <div v-else class="res-body" :class="{ editing }" :contenteditable="editing" @input="dirty = true">
+        <div v-else class="res-body" :class="{ editing }" :contenteditable="editing" @input="onResultEdit"><pre v-if="generatedContent" class="ai-output">{{ generatedContent }}</pre><template v-else>
           <!-- 教案 -->
           <template v-if="type === 'lesson'">
             <h3 class="doc-t">{{ lessonPlan.title }}</h3>
@@ -134,7 +134,7 @@
                 <ul class="rub"><li v-for="r in trainTask.rubric" :key="r.item"><span>{{ r.item }}</span><i><u :style="{ width: r.score * 3 + '%' }"></u></i><b>{{ r.score }}</b></li></ul>
               </div>
             </div>
-          </template>
+          </template></template></template></template></template>
         </div>
 
         <div class="actions">
@@ -169,72 +169,92 @@ import { ElMessage } from 'element-plus'
 import AiIcon from '../components/AiIcon.vue'
 import { aiHandoff } from '../stores/aiHandoff'
 import { genTypes, sampleOutline, lessonPlan, exercises, pptOutline, trainTask } from '../data/aiMock'
+import { apiRequest } from '../api/client'
 
 const type = ref('lesson')
 const outline = ref(sampleOutline)
 const focused = ref(false)
 const fileName = ref('')
+const fileUrl = ref('')
 const hours = ref('2 课时')
 const level = ref('高职一年级')
 const busy = ref(false)
-const version = ref(1)
+const version = ref(0)
 const stamp = ref('尚未生成')
 const editing = ref(false)
 const dirty = ref(false)
 const invalid = ref(false)
 const dlg = ref(false)
-const course = '短视频制作与运营'
-const chapters = ['第 2 章 拍摄与剪辑', '第 3 章 平台算法', '第 4 章 内容策划']
-const chapter = ref('第 3 章 平台算法')
+const course = '当前教师课程'
+const chapters = ['请在课程建设中选择目标章节']
+const chapter = ref(chapters[0])
 const pos = ref('追加到章节末尾')
 const toBank = ref(true)
+const generatedContent = ref('')
+const currentLabel = computed(() => genTypes.find(item => item.key === type.value)?.label ?? '教学内容')
+function now() { return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) }
 
-const currentLabel = computed(() => genTypes.find(t => t.key === type.value)!.label)
+async function onFile(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  fileName.value = file.name
+  try {
+    if (/\.(txt|md)$/i.test(file.name)) outline.value = await file.text()
+    const form = new FormData(); form.append('file', file)
+    const upload = await apiRequest<{ fileUrl: string }>('/api/file/upload/general', { method: 'POST', body: form })
+    fileUrl.value = upload.fileUrl
+    ElMessage.success('大纲已上传，可用于生成备课内容')
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : '大纲上传失败') }
+}
+function toggleEdit() { editing.value = !editing.value; if (!editing.value && dirty.value) ElMessage.info('修改已保留在当前预览') }
+function onResultEdit(event: Event) { generatedContent.value = (event.currentTarget as HTMLElement).innerText; dirty.value = true }
+async function saveCloud() {
+  if (!generatedContent.value.trim()) { ElMessage.warning('请先生成备课内容'); return }
+  try {
+    const file = new File([generatedContent.value], `ai-${type.value}-${Date.now()}.md`, { type: 'text/markdown' })
+    const form = new FormData(); form.append('file', file)
+    await apiRequest('/api/file/upload/general', { method: 'POST', body: form })
+    dirty.value = false; ElMessage.success('备课素材已保存到个人文件库')
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : '素材保存失败') }
+}
+function doImport() { ElMessage.warning('请选择具体课程与章节后，再从课程建设页面导入本次生成内容'); dlg.value = false }
 
-function now() {
-  const d = new Date()
-  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0')
-}
-function onFile(e: Event) {
-  const f = (e.target as HTMLInputElement).files?.[0]
-  if (f) { fileName.value = f.name; ElMessage.success('已读取大纲：' + f.name) }
-}
-function toggleEdit() {
-  editing.value = !editing.value
-  if (!editing.value && dirty.value) ElMessage.info('修改已暂存，导入或保存时一并带走')
-}
-function saveCloud() {
-  ElMessage.success('已保存至云盘 / AI备课 / ' + currentLabel.value + (dirty.value ? '（含你的修改）' : ''))
-  dirty.value = false
-}
-function doImport() {
-  dlg.value = false
-  dirty.value = false
-  ElMessage.success(`已导入“${chapter.value}”${type.value === 'exercise' && toBank.value ? '，并存入题库' : ''}`)
-}
-function generate(again: boolean) {
-  invalid.value = outline.value.trim().length < 10 && !fileName.value
-  if (invalid.value) return
-  editing.value = false
-  dirty.value = false
-  busy.value = true
-  window.setTimeout(() => {
-    busy.value = false
-    if (again) version.value += 1
-    stamp.value = '上次生成 ' + now()
-    ElMessage.success(again ? '已重新生成' + currentLabel.value : '已根据大纲生成' + currentLabel.value)
-  }, 1100)
-}
-
-onMounted(() => {
-  stamp.value = '上次生成 ' + now()
-  // 学情分析「一键生成专项练习」联动
-  if (aiHandoff.outline) {
-    outline.value = aiHandoff.outline
-    if (aiHandoff.type) type.value = aiHandoff.type
-    aiHandoff.outline = ''
-    aiHandoff.type = ''
-    generate(false)
+async function streamPrompt(prompt: string): Promise<string> {
+  const session = await apiRequest<{ sessionId: number }>('/api/ai/chat/sessions', { method: 'POST', body: {} })
+  const base = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+  const token = localStorage.getItem('teacher-access-token')
+  const response = await fetch(`${base}/api/ai/chat/sessions/${session.sessionId}/stream`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ message: prompt, documentUrls: fileUrl.value ? [fileUrl.value] : [], systemPrompt: '你是职业院校教学设计助手。依据用户给出的课程大纲，输出可直接审核的中文教学材料。按所选类型输出具体内容；不得编造课程数据。' + (fileUrl.value ? ` 可参考上传文档：${fileUrl.value}` : '') })
+  })
+  if (!response.ok || !response.body) throw new Error(`AI 服务请求失败（${response.status}）`)
+  const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let output = ''
+  while (true) {
+    const { value, done } = await reader.read(); if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split(/\r?\n/); buffer = lines.pop() ?? ''
+    for (const line of lines) if (line.startsWith('data:')) {
+      const data = line.slice(5).trim(); if (!data || data === '[DONE]') continue
+      try { const parsed = JSON.parse(data); output += String(parsed.content ?? parsed.text ?? parsed.delta ?? '') }
+      catch { output += data }
+    }
   }
+  return output.trim()
+}
+async function generate(again: boolean) {
+  invalid.value = outline.value.trim().length < 10 && !fileUrl.value
+  if (invalid.value) return
+  editing.value = false; dirty.value = false; busy.value = true
+  try {
+    const prompt = `生成类型：${currentLabel.value}\n课时：${hours.value}\n教学对象：${level.value}\n课程：${course}\n课程大纲或教学目标：\n${outline.value}`
+    const result = await streamPrompt(prompt)
+    if (!result) throw new Error('AI 未返回可展示的内容')
+    generatedContent.value = result; version.value += 1; stamp.value = '上次生成 ' + now()
+    ElMessage.success(again ? '已重新生成备课内容' : '已根据大纲生成备课内容')
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : 'AI 生成失败') }
+  finally { busy.value = false }
+}
+onMounted(() => {
+  if (aiHandoff.outline) { outline.value = aiHandoff.outline; if (aiHandoff.type) type.value = aiHandoff.type; aiHandoff.outline = ''; aiHandoff.type = ''; void generate(false) }
 })
 </script>

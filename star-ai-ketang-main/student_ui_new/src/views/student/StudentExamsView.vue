@@ -54,6 +54,8 @@ import { computed, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { exams, takingExam, type Exam, type Status } from '../../stores/exams'
 import { startProctoring, maxViolations } from '../../utils/proctor'
+import { apiRequest } from '../../api/client'
+import { onMounted } from 'vue'
 
 const emit = defineEmits<{ navigate: [id: string] }>()
 
@@ -71,6 +73,18 @@ const rulesHtml = `考试须知：<br>
 2. 考试期间禁止切换标签页、切出窗口或最小化浏览器，累计切屏 ${maxViolations} 次将强制交卷；<br>
 3. 请使用电脑端 Chrome / Edge 浏览器，提前关闭无关软件。`
 
+onMounted(async () => {
+  try {
+    const rows = await apiRequest<Array<Record<string, unknown>>>('/api/exams/my')
+    exams.value = rows.map(row => ({
+      id: Number(row.id), name: String(row.name), course: String(row.course), paperId: Number(row.paperId) || undefined,
+      window: `${new Date(String(row.start)).toLocaleString()} ~ ${new Date(String(row.end)).toLocaleString()}`,
+      duration: `${row.duration} 分钟`, count: 0, score: Number(row.score ?? 100),
+      status: row.examState === 'ONGOING' ? 'ongoing' : row.examState === 'TODO' ? 'todo' : 'done',
+      myScore: row.myScore == null ? null : Number(row.myScore)
+    }))
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : '考试列表加载失败') }
+})
 function showRules() {
   ElMessageBox.alert(rulesHtml, '考试须知', { dangerouslyUseHTMLString: true, confirmButtonText: '知道了' })
 }
