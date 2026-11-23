@@ -843,7 +843,7 @@ watch(createDialog, v => {
   }
 })
 
-async async async async async function confirmCreateCourse() {
+async function confirmCreateCourse() {
   const template = createMode.value === 'template' ? courseTemplates.find(x => x.id === tplId.value) : undefined
   if (createMode.value === 'template' && !template) { ElMessage.warning('请先从模板库选择一个课程模板'); return }
   const name = newCourse.value.name.trim() || template?.name || ''
@@ -1064,7 +1064,7 @@ function confirmInsert() {
   ElMessage.success(n ? `已插入 ${n} 个资源到当前章节` : '未选择资源')
   resourcePool.value.forEach(r => (r.checked = false))
 }
-async async async async async function confirmAddChapter() {
+async function confirmAddChapter() {
   const course = activeCourse.value
   if (!course || !newChapterName.value.trim()) { ElMessage.warning('请输入章节名称'); return }
   try {
@@ -1090,7 +1090,7 @@ async function publish() {
   if (!c) return
   try {
     await apiRequest(`/api/course/${c.id}/publish`, { method: 'POST' })
-    c.status = '宸插彂甯?
+    c.status = '已发布'
     ElMessage.success('Course published')
   } catch (error) { ElMessage.error(error instanceof Error ? error.message : 'Publish failed') }
 }
