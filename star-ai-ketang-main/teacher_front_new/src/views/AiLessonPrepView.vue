@@ -59,7 +59,7 @@
             </template>
           </div>
         </div>
-        <div class="basis"><span class="muted">生成依据</span><span class="chip gray">{{ fileName || '粘贴的教学目标' }}</span><span class="chip gray">{{ hours }}</span><span class="chip gray">{{ level }}</span><span class="chip gray">课程：{{ course }}</span></div>
+        <div class="basis"><span class="muted">生成依据</span><span class="chip gray">{{ fileName || '粘贴的教学目标' }}</span><span class="chip gray">{{ hours }}</span><span class="chip gray">{{ level }}</span><span class="chip gray">课程：{{ course?.name || "Course" }}</span></div>
 
         <div v-if="busy" class="skel"><i v-for="n in 7" :key="n" :style="{ width: (92 - n * 7) + '%' }"></i></div>
 
@@ -147,12 +147,13 @@
       <div v-if="dlg" class="mask" @click.self="dlg = false">
         <div class="dlg card" role="dialog" aria-modal="true" aria-label="导入课程编辑器">
           <h3>导入课程编辑器</h3>
-          <p class="sub">将“{{ currentLabel }}”导入到课程《{{ course }}》，导入后可继续在富媒体编辑器中修改。</p>
-          <label class="lab" for="chap">目标章节</label>
-          <select id="chap" class="select" v-model="chapter"><option v-for="c in chapters" :key="c">{{ c }}</option></select>
-          <label class="lab" for="pos">插入方式</label>
-          <select id="pos" class="select" v-model="pos"><option>追加到章节末尾</option><option>新建学习单元</option><option>替换该章节同类内容</option></select>
-          <label v-if="type === 'exercise'" class="ck"><input type="checkbox" v-model="toBank" />同时存入课程题库（单选、判断、简答）</label>
+          <p class="sub">将“{{ currentLabel }}”导入到课程《{{ course?.name || "Course" }}》，导入后可继续在富媒体编辑器中修改。</p>
+          <label class="lab" for="target-course">Target course</label>
+          <select id="target-course" class="select" v-model="courseId"><option v-for="c in courses" :key="c.id" :value="c.id">{{ c.name }}</option></select>
+          <label class="lab" for="chap">Target chapter</label>
+          <select id="chap" class="select" v-model="chapterId"><option v-for="c in chapters" :key="c.id" :value="c.id">{{ c.title }}</option></select>
+          <label class="lab" for="section-title">Learning unit title</label>
+          <input id="section-title" class="select" v-model="targetTitle" maxlength="128" placeholder="Enter a title" />
           <div class="dlg-f">
             <button class="btn" @click="dlg = false">取消</button>
             <button class="btn btn-primary" @click="doImport">确认导入</button>
@@ -164,12 +165,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import AiIcon from '../components/AiIcon.vue'
 import { aiHandoff } from '../stores/aiHandoff'
 import { genTypes, sampleOutline, lessonPlan, exercises, pptOutline, trainTask } from '../data/aiMock'
 import { apiRequest } from '../api/client'
+import { courses } from '../stores/courses'
 
 const type = ref('lesson')
 const outline = ref(sampleOutline)
@@ -185,11 +187,13 @@ const editing = ref(false)
 const dirty = ref(false)
 const invalid = ref(false)
 const dlg = ref(false)
-const course = '当前教师课程'
-const chapters = ['请在课程建设中选择目标章节']
-const chapter = ref(chapters[0])
-const pos = ref('追加到章节末尾')
-const toBank = ref(true)
+const courseId = ref<number | null>(null)
+const course = computed(() => courses.value.find((item) => item.id === courseId.value))
+const chapters = computed(() => course.value?.chapters ?? [])
+const chapterId = ref<number | null>(null)
+const targetTitle = ref('')
+watch(courses, (items) => { if (!courseId.value && items.length) courseId.value = items[0].id }, { immediate: true })
+watch(courseId, () => { chapterId.value = course.value?.chapters[0]?.id ?? null })
 const generatedContent = ref('')
 const currentLabel = computed(() => genTypes.find(item => item.key === type.value)?.label ?? '教学内容')
 function now() { return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) }
@@ -208,16 +212,43 @@ async function onFile(event: Event) {
 }
 function toggleEdit() { editing.value = !editing.value; if (!editing.value && dirty.value) ElMessage.info('修改已保留在当前预览') }
 function onResultEdit(event: Event) { generatedContent.value = (event.currentTarget as HTMLElement).innerText; dirty.value = true }
-async function saveCloud() {
-  if (!generatedContent.value.trim()) { ElMessage.warning('请先生成备课内容'); return }
-  try {
-    const file = new File([generatedContent.value], `ai-${type.value}-${Date.now()}.md`, { type: 'text/markdown' })
-    const form = new FormData(); form.append('file', file)
-    await apiRequest('/api/file/upload/general', { method: 'POST', body: form })
-    dirty.value = false; ElMessage.success('备课素材已保存到个人文件库')
-  } catch (error) { ElMessage.error(error instanceof Error ? error.message : '素材保存失败') }
+async function uploadGeneratedContent(): Promise<string> {
+  const file = new File([generatedContent.value], `ai-${type.value}-${Date.now()}.md`, { type: 'text/markdown' })
+  const form = new FormData(); form.append('file', file)
+  const uploaded = await apiRequest<{ fileUrl: string }>('/api/file/upload/general', { method: 'POST', body: form })
+  return uploaded.fileUrl
 }
-function doImport() { ElMessage.warning('请选择具体课程与章节后，再从课程建设页面导入本次生成内容'); dlg.value = false }
+async function saveCloud() {
+  if (!generatedContent.value.trim()) { ElMessage.warning('Generate lesson content first'); return }
+  try {
+    fileUrl.value = await uploadGeneratedContent()
+    dirty.value = false
+    ElMessage.success('Lesson material saved to your file library')
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : 'Could not save lesson material') }
+}
+async function doImport() {
+  if (!course.value || !chapterId.value) { ElMessage.warning('Select a course and chapter first'); return }
+  if (!generatedContent.value.trim()) { ElMessage.warning('Generate and review content first'); return }
+  busy.value = true
+  try {
+    const resourceUrl = await uploadGeneratedContent()
+    const selectedChapter = chapters.value.find((item) => item.id === chapterId.value)
+    await apiRequest(`/api/course/${course.value.id}/section`, { method: 'POST', body: {
+      chapterId: chapterId.value,
+      title: targetTitle.value.trim() || `${currentLabel.value} ${new Date().toLocaleDateString()}`,
+      description: generatedContent.value,
+      videoUrl: null,
+      duration: 0,
+      sort: (selectedChapter?.sections.length ?? 0) + 1,
+      isFree: true,
+      resourceUrl,
+    } })
+    fileUrl.value = resourceUrl
+    dlg.value = false
+    ElMessage.success('Saved to the selected course chapter')
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : 'Course import failed') }
+  finally { busy.value = false }
+}
 
 async function streamPrompt(prompt: string): Promise<string> {
   const session = await apiRequest<{ sessionId: number }>('/api/ai/chat/sessions', { method: 'POST', body: {} })
@@ -235,8 +266,7 @@ async function streamPrompt(prompt: string): Promise<string> {
     const lines = buffer.split(/\r?\n/); buffer = lines.pop() ?? ''
     for (const line of lines) if (line.startsWith('data:')) {
       const data = line.slice(5).trim(); if (!data || data === '[DONE]') continue
-      try { const parsed = JSON.parse(data); output += String(parsed.content ?? parsed.text ?? parsed.delta ?? '') }
-      catch { output += data }
+            try { const parsed = JSON.parse(data); output += typeof parsed === 'string' ? parsed : typeof parsed === 'number' ? data : String(parsed.content ?? parsed.text ?? parsed.delta ?? '') } catch { output += data }
     }
   }
   return output.trim()
@@ -246,7 +276,7 @@ async function generate(again: boolean) {
   if (invalid.value) return
   editing.value = false; dirty.value = false; busy.value = true
   try {
-    const prompt = `生成类型：${currentLabel.value}\n课时：${hours.value}\n教学对象：${level.value}\n课程：${course}\n课程大纲或教学目标：\n${outline.value}`
+    const prompt = `生成类型：${currentLabel.value}\n课时：${hours.value}\n教学对象：${level.value}\n课程：${course.value?.name || "Course"}\n课程大纲或教学目标：\n${outline.value}`
     const result = await streamPrompt(prompt)
     if (!result) throw new Error('AI 未返回可展示的内容')
     generatedContent.value = result; version.value += 1; stamp.value = '上次生成 ' + now()

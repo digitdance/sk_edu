@@ -8,7 +8,7 @@
         </div>
         <div class="filters">
           <span class="chip ok">知识库 {{ boundCount }}/{{ totalKb }}</span>
-          <span class="chip gray">今日问答 36</span>
+          <span class="chip gray">今日问答 {{ records.length }}</span>
           <span class="chip warn">待纠错 {{ correctedCount }}</span>
         </div>
       </div>
@@ -22,13 +22,16 @@
           </div>
         </div>
         <div class="kb-lists">
-          <div v-for="g in kbGroups" :key="g.id" class="kb">
-            <div class="kb-t"><AiIcon :name="g.icon" :size="15" /><b>{{ g.type }}</b><span class="muted">{{ g.items.length }} 项</span></div>
-            <label v-for="k in g.items" :key="k.name" class="kb-i" :class="{ on: k.bound }">
-              <input type="checkbox" v-model="k.bound" />
-              <span>{{ k.name }}</span>
-              <small class="muted">{{ k.info }} · {{ k.state }}</small>
+          <div class="kb">
+            <div class="kb-t"><b>Available knowledge bases</b><button class="btn-sm btn" @click="loadKnowledgeBases">Refresh</button><button class="btn-sm btn" :disabled="kbBusy" @click="createKnowledgeBase">Create</button></div>
+            <p v-if="!knowledgeBases.length" class="muted">Create a knowledge base and upload course materials to enable grounded answers.</p>
+            <label v-for="kb in knowledgeBases" :key="kb.id" class="kb-i" :class="{ on: selectedKbIds.includes(kb.id) }">
+              <input type="checkbox" :value="kb.id" v-model="selectedKbIds" />
+              <span>{{ kb.name }}</span><small class="muted">{{ kb.documentCount ?? 0 }} documents 路 {{ kb.status ?? 'ready' }}</small>
             </label>
+            <label class="lab" for="kb-upload">Add a course document</label>
+            <input id="kb-upload" type="file" :disabled="kbBusy || !selectedKbIds.length" @change="uploadKnowledgeDocument" />
+            <small class="muted">Text and Markdown files are indexed with their content; other formats are passed to the document processor.</small>
           </div>
         </div>
       </section>
@@ -163,11 +166,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import AiIcon from '../components/AiIcon.vue'
-import { defaultBoundary, kbIndex, kbSources, qaRecords, qaSamples, type QaRecord } from '../data/aiMock'
+import { defaultBoundary, kbIndex, qaSamples, type QaRecord } from '../data/aiMock'
 import { apiRequest } from '../api/client'
+import { auth } from '../stores/auth'
 
 interface ChatMsg {
   role: 'u' | 'b'
@@ -176,16 +180,21 @@ interface ChatMsg {
 }
 type Rec = QaRecord & { checked: boolean }
 
-const kbGroups = reactive([
-  { id: 'courseware', type: '课程课件', icon: 'slides', items: kbSources.courseware.map((k) => ({ ...k, bound: true })) },
-  { id: 'bank', type: '课程题库', icon: 'db', items: kbSources.bank.map((k) => ({ ...k, bound: true })) },
-  { id: 'video', type: '教学视频', icon: 'video', items: kbSources.video.map((k) => ({ ...k, bound: true })) },
-])
-const totalKb = computed(() => kbGroups.reduce((n, g) => n + g.items.length, 0))
-const boundCount = computed(() => kbGroups.reduce((n, g) => n + g.items.filter((k) => k.bound).length, 0))
+interface KnowledgeBase { id: number; name: string; description?: string; documentCount?: number; status?: string }
+interface RecallChunk { documentName?: string; content?: string; score?: number }
+interface RecallResponse { chunks?: RecallChunk[]; totalResults?: number }
+const knowledgeBases = ref<KnowledgeBase[]>([])
+const selectedKbIds = ref<number[]>([])
+const kbBusy = ref(false)
+const totalKb = computed(() => knowledgeBases.value.length)
+const boundCount = computed(() => selectedKbIds.value.length)
+const settingsKey = () => `teacher-ai-qa-settings:${auth.userId}`
+const sessionKey = () => `teacher-ai-qa-session:${auth.userId}`
+const standardsKey = () => `teacher-ai-qa-standards:${auth.userId}`
 
 const qaOn = ref(true)
 const boundary = reactive({ ...defaultBoundary, scope: { ...defaultBoundary.scope } })
+const standards = ref<Record<string, string>>({})
 const scopeOptions = [
   { id: 'courseware', name: '课程课件内容' },
   { id: 'bank', name: '课程题库知识' },
@@ -207,7 +216,12 @@ const recFilters = [
   { id: 'blocked', name: '已拦截' },
   { id: 'corrected', name: '已纠错' },
 ]
-const records = reactive<Rec[]>(qaRecords.map((r) => ({ ...r, src: [...r.src], checked: false })))
+function loadSavedRecords(): Rec[] {
+  try { return JSON.parse(localStorage.getItem(`teacher-ai-qa-records:${auth.userId}`) || '[]') as Rec[] }
+  catch { return [] }
+}
+function persistRecords() { localStorage.setItem(`teacher-ai-qa-records:${auth.userId}`, JSON.stringify(records)) }
+const records = reactive<Rec[]>(loadSavedRecords())
 const detail = ref<Rec | null>(null)
 const stdDraft = ref('')
 
@@ -255,57 +269,121 @@ async function ask(q: string) {
   let answer = local.a
   let status = local.status
   let sources = local.src
-  try {
-    if (local.status !== 'blocked') {
-      if (!aiSessionId.value) {
-        const session = await apiRequest<{ sessionId: number }>('/api/ai/chat/sessions', { method: 'POST', body: {} })
-        aiSessionId.value = session.sessionId
-      }
-      const base = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
-      const token = localStorage.getItem('teacher-access-token')
-      const context = kbIndex.map(item => `${item.src}: ${item.a}`).join('\n')
-      const response = await fetch(`${base}/api/ai/chat/sessions/${aiSessionId.value}/stream`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ message: text, systemPrompt: `Answer using the course knowledge context. If it does not support an answer, say so clearly. Do not provide direct answers to active exams or graded homework.\n\nCourse knowledge context:\n${context}` })
-      })
-      if (!response.ok || !response.body) throw new Error(`AI service returned ${response.status}`)
-      const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let output = ''
-      while (true) {
-        const { value, done } = await reader.read(); if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split(/\r?\n/); buffer = lines.pop() ?? ''
-        for (const line of lines) if (line.startsWith('data:')) {
-          const data = line.slice(5).trim(); if (!data || data === '[DONE]') continue
-          try { const parsed = JSON.parse(data); output += String(parsed.content ?? parsed.text ?? parsed.delta ?? '') } catch { output += data }
+  let confidence = local.conf
+  const standard = standards.value[norm(text)]
+  if (standard && local.status !== 'blocked') {
+    answer = standard
+    confidence = 100
+    status = 'corrected'
+    sources = ['Teacher standard answer']
+  } else if (local.status !== 'blocked') {
+    try {
+      const recallResults = await Promise.all(selectedKbIds.value.map((id) => apiRequest<RecallResponse>(`/api/ai/knowledge-bases/${id}/recall-test`, { method: 'POST', body: { query: text } })))
+      const chunks = recallResults.flatMap((result) => result.chunks ?? []).filter((chunk) => (chunk.score ?? 0) >= 0.3)
+      confidence = chunks.length ? Math.round(Math.max(...chunks.map((chunk) => chunk.score ?? 0)) * 100) : 0
+      const context = chunks.map((chunk) => `${chunk.documentName ?? 'Course document'}: ${chunk.content ?? ''}`).join('\n\n')
+      sources = [...new Set(chunks.map((chunk) => chunk.documentName).filter((name): name is string => Boolean(name)))]
+      if (!context) {
+        status = 'out'
+        answer = boundary.outAction === 'forward' ? boundary.fallback : boundary.outAction === 'open' ? 'No matching course source was found. Please check with your instructor.' : 'No matching course source was found, so I cannot answer reliably.'
+      } else {
+        if (!aiSessionId.value) {
+          const session = await apiRequest<{ sessionId: number }>('/api/ai/chat/sessions', { method: 'POST', body: {} })
+          aiSessionId.value = session.sessionId
+          localStorage.setItem(sessionKey(), String(session.sessionId))
         }
+        const base = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+        const token = localStorage.getItem('teacher-access-token')
+        const response = await fetch(`${base}/api/ai/chat/sessions/${aiSessionId.value}/stream`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify({ message: text, documentUrls: [], systemPrompt: `Use only the supplied course excerpts. If they do not support an answer, say so. Do not provide direct answers to active exams or graded homework. ${boundary.needSource ? 'Cite source document names.' : ''}\n\nAllowed scope: ${Object.entries(boundary.scope).filter(([, allowed]) => allowed).map(([name]) => name).join(', ')}\n\nCourse excerpts:\n${context}` })
+        })
+        if (!response.ok || !response.body) throw new Error(`AI service returned ${response.status}`)
+        const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let output = ''
+        while (true) {
+          const { value, done } = await reader.read(); if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split(/\r?\n/); buffer = lines.pop() ?? ''
+          for (const line of lines) if (line.startsWith('data:')) {
+            const data = line.slice(5).trim(); if (!data || data === '[DONE]') continue
+            try { const parsed = JSON.parse(data); output += typeof parsed === 'string' ? parsed : typeof parsed === 'number' ? data : String(parsed.content ?? parsed.text ?? parsed.delta ?? '') } catch { output += data }
+          }
+        }
+        if (output.trim()) { answer = output.trim(); status = 'answered' }
       }
-      if (output.trim()) { answer = output.trim(); status = 'answered'; sources = local.src }
+    } catch (error) {
+      answer = boundary.fallback
+      status = 'out'
+      ElMessage.warning(error instanceof Error ? `Knowledge lookup failed: ${error.message}` : 'Knowledge lookup failed')
     }
-  } catch (error) { ElMessage.warning(error instanceof Error ? `AI unavailable; using configured fallback: ${error.message}` : 'AI unavailable; using configured fallback') }
+  }
   chat.value.push({ role: 'b', text: answer, src: sources[0] })
   records.unshift({
-    id: Date.now(), student: 'Teacher preview', cls: '鈥?,
+    id: Date.now(), student: 'Teacher preview', cls: '',
     time: new Date().toLocaleString('zh-CN', { hour12: false }).replaceAll('/', '-'),
-    q: text, a: answer, src: sources, conf: local.conf, status,
+    q: text, a: answer, src: sources, conf: confidence, status,
     fwd: status === 'out' && boundary.outAction === 'forward', teacher: '',
     note: status === 'blocked' ? 'Blocked by configured policy' : '', checked: false
   })
 }
 
-function bindAll() {
-  kbGroups.forEach((g) => g.items.forEach((k) => (k.bound = true)))
+async function loadKnowledgeBases() {
+  if (!auth.userId) return
+  kbBusy.value = true
+  try {
+    knowledgeBases.value = await apiRequest<KnowledgeBase[]>(`/api/ai/knowledge-bases?userId=${auth.userId}&page=0&size=100`)
+    const saved = JSON.parse(localStorage.getItem(`${sessionKey()}:kbids`) || '[]') as number[]
+    selectedKbIds.value = saved.filter((id) => knowledgeBases.value.some((kb) => kb.id === id))
+    if (!localStorage.getItem(`${sessionKey()}:kbids`)) selectedKbIds.value = knowledgeBases.value.map((kb) => kb.id)
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : 'Could not load knowledge bases') }
+  finally { kbBusy.value = false }
 }
-function bindNone() {
-  kbGroups.forEach((g) => g.items.forEach((k) => (k.bound = false)))
+async function createKnowledgeBase() {
+  if (!auth.userId) { ElMessage.warning('Sign in before creating a knowledge base'); return }
+  kbBusy.value = true
+  try {
+    const kb = await apiRequest<KnowledgeBase>(`/api/ai/knowledge-bases?userId=${auth.userId}`, { method: 'POST', body: {
+      name: `${auth.profile.name || 'Teacher'} Course Assistant`, description: 'Course materials for grounded student Q&A',
+      retrievalMode: 'HYBRID_RERANK', defaultTopK: 5, useDynamicTopK: false,
+    } })
+    await loadKnowledgeBases()
+    selectedKbIds.value = [...new Set([...selectedKbIds.value, kb.id])]
+    ElMessage.success('Knowledge base created')
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : 'Could not create knowledge base') }
+  finally { kbBusy.value = false }
 }
-function addWord() {
+async function uploadKnowledgeDocument(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  const kbId = selectedKbIds.value[0]
+  if (selectedKbIds.value.length !== 1) { ElMessage.warning('Select exactly one KB before adding a document'); input.value = ''; return }
+  if (!file || !kbId || !auth.userId) return
+  kbBusy.value = true
+  try {
+    const form = new FormData(); form.append('file', file)
+    const uploaded = await apiRequest<{ fileUrl: string }>('/api/file/upload/general', { method: 'POST', body: form })
+    const content = /\.(txt|md)$/i.test(file.name) ? await file.text() : null
+    const doc = await apiRequest<{ id: number }>(`/api/ai/knowledge-bases/${kbId}/documents?userId=${auth.userId}`, { method: 'POST', body: {
+      name: file.name, fileType: file.name.split('.').pop() || 'file', fileUrl: uploaded.fileUrl, fileSize: file.size, content,
+    } })
+    await apiRequest(`/api/ai/knowledge-bases/${kbId}/documents/${doc.id}/embed`, { method: 'POST' })
+    await loadKnowledgeBases()
+    ElMessage.success('Document uploaded and indexing requested')
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : 'Document upload failed') }
+  finally { kbBusy.value = false; input.value = '' }
+}
+function bindAll() { selectedKbIds.value = knowledgeBases.value.map((kb) => kb.id) }
+function bindNone() { selectedKbIds.value = [] }
+async function addWord() {
   const w = newWord.value.trim()
   if (w && !words.value.includes(w)) words.value.push(w)
   newWord.value = ''
 }
 function saveBoundary() {
-  ElMessage.success('边界设置已保存，并即时同步到学生端')
+  localStorage.setItem(settingsKey(), JSON.stringify({ boundary, words: words.value, qaOn: qaOn.value }))
+  localStorage.setItem(`${sessionKey()}:kbids`, JSON.stringify(selectedKbIds.value))
+  ElMessage.success('Settings saved for this teacher account')
 }
 function statusName(s: string) {
   return ({ answered: '已解答', out: '超范围', blocked: '已拦截', corrected: '已纠错' } as Record<string, string>)[s] ?? s
@@ -322,18 +400,17 @@ function openDetail(r: Rec) {
   stdDraft.value = r.teacher || ''
 }
 function saveStd() {
-  if (!stdDraft.value.trim()) {
-    ElMessage.warning('请先填写标准答案')
-    return
-  }
+  if (!stdDraft.value.trim()) { ElMessage.warning('Enter a standard answer first'); return }
   if (detail.value) {
-    detail.value.teacher = stdDraft.value
-    detail.value.a = stdDraft.value
+    detail.value.teacher = stdDraft.value.trim()
+    detail.value.a = stdDraft.value.trim()
     detail.value.status = 'corrected'
     detail.value.conf = 98
     detail.value.fwd = false
+    standards.value[norm(detail.value.q)] = stdDraft.value.trim()
+    localStorage.setItem(standardsKey(), JSON.stringify(standards.value))
   }
-  ElMessage.success('已保存为标准答案，后续相同问题将优先引用')
+  ElMessage.success('Standard answer saved and will be reused')
 }
 function flagError() {
   if (detail.value) {
@@ -354,6 +431,34 @@ function batchToStd() {
   ElMessage.success(`已将 ${n} 条优质问答加入标准答案库`)
 }
 function exportRecords() {
-  ElMessage.success('问答记录已导出（CSV）')
+  if (!records.length) { ElMessage.warning('There are no Q&A records to export'); return }
+  const csv = ['Question,Answer,Status,Sources,Time', ...records.map((record) => [record.q, record.a, record.status, record.src.join('; '), record.time].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(','))].join('\r\n')
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+  const link = document.createElement('a'); link.href = url; link.download = 'course-qa-records.csv'; link.click()
+  URL.revokeObjectURL(url)
 }
+async function restoreAiState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(settingsKey()) || 'null')
+    if (saved) {
+      Object.assign(boundary, saved.boundary ?? {})
+      Object.assign(boundary.scope, saved.boundary?.scope ?? {})
+      words.value = saved.words ?? words.value
+      qaOn.value = saved.qaOn ?? qaOn.value
+      selectedKbIds.value = saved.selectedKbIds ?? []
+    }
+    standards.value = JSON.parse(localStorage.getItem(standardsKey()) || '{}')
+    await loadKnowledgeBases()
+    const savedSessionId = Number(localStorage.getItem(sessionKey()))
+    if (savedSessionId) {
+      const detail = await apiRequest<{ messages: Array<{ role: string; content: string }> }>(`/api/ai/chat/sessions/${savedSessionId}`)
+      aiSessionId.value = savedSessionId
+      chat.value = (detail.messages ?? []).map((message) => ({ role: message.role === 'user' ? 'u' : 'b', text: message.content }))
+    }
+  } catch {
+    aiSessionId.value = null
+    localStorage.removeItem(sessionKey())
+  }
+}
+onMounted(() => { void restoreAiState() })
 </script>

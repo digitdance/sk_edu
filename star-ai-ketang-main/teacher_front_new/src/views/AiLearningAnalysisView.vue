@@ -139,17 +139,19 @@
           </template>
 
           <template v-else>
-            <div class="viz-h"><h3 class="h-title">班级学情趋势报告</h3><span class="chip ok">AI 自动生成</span></div>
+            <div class="viz-h">
+              <h3 class="h-title">Class learning report</h3>
+              <button class="btn-primary" :disabled="reportLoading || !cls" @click="generateAiReport">{{ reportLoading ? 'Working...' : 'Generate AI report' }}</button>
+            </div>
             <div class="rep">
-              <b>本期结论（{{ period }}）</b>
-              <ul>
-                <li v-for="b in reportBullets" :key="b">{{ b }}</li>
-              </ul>
+              <b>AI findings ({{ period }})</b>
+              <pre v-if="aiReport" class="ai-report">{{ aiReport }}</pre>
+              <p v-else class="muted">Generate a report to review recommendations based on this class's learning data.</p>
             </div>
             <AiLineChart :labels="trendLabels" :series="trendSets.score.data" :min="trendSets.score.min" :max="trendSets.score.max" :label="trendSets.score.name" />
             <div class="export">
               <span class="muted">报告可随家长会 / 教学检查导出存档</span>
-              <button class="btn-primary" @click="exportReport"><AiIcon name="download" :size="15" /> 导出学情报告 PDF</button>
+              <button class="btn-primary" @click="exportReport"><AiIcon name="download" :size="15" /> Export Markdown</button>
             </div>
           </template>
         </section>
@@ -173,7 +175,6 @@ import {
   gradingRows,
   homeworkTypes,
   periods,
-  reportBullets,
   students,
   topErrors,
   trendLabels,
@@ -188,6 +189,8 @@ type Metric = 'score' | 'rate' | 'submit'
 const cls = ref('')
 const classOptions = ref<Array<{ id: string; className: string }>>([])
 const overview = ref({ memberCount: 0, totalActivities: 0, avgScoreRate: 0, avgDurationText: '-' })
+const aiReport = ref('')
+const reportLoading = ref(false)
 const stu = ref('全班')
 const period = ref(periods[0])
 const hw = ref(homeworkTypes[0])
@@ -206,6 +209,7 @@ const modes = [
 const modeName = computed(() => modes.find((m) => m.id === mode.value)?.name ?? '')
 const trend = computed(() => trendSets[metric.value])
 watch(cls, async (id) => {
+  aiReport.value = ''
   if (!id) return
   try { overview.value = await apiRequest<typeof overview.value>(`/api/analytics/class/${id}/overview`) }
   catch (error) { ElMessage.error(error instanceof Error ? error.message : 'Class analytics could not be loaded') }
@@ -245,8 +249,38 @@ function syncGrade() {
 function push(g: string) {
   ElMessage.success(`已向「${g}」学生推送学习建议`)
 }
+async function generateAiReport() {
+  if (!cls.value) { ElMessage.warning('Choose a class first'); return }
+  reportLoading.value = true
+  aiReport.value = ''
+  try {
+    const base = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+    const token = localStorage.getItem('teacher-access-token')
+    const response = await fetch(`${base}/api/analytics/class/${cls.value}/ai-report`, {
+      headers: { Accept: 'text/event-stream', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+    })
+    if (!response.ok || !response.body) throw new Error(`AI report request failed (${response.status})`)
+    const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let output = ''
+    while (true) {
+      const { value, done } = await reader.read(); if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split(/\r?\n/); buffer = lines.pop() ?? ''
+      for (const line of lines) if (line.startsWith('data:')) {
+        const data = line.slice(5).trim(); if (!data || data === '[DONE]') continue
+            try { const parsed = JSON.parse(data); output += typeof parsed === 'string' ? parsed : typeof parsed === 'number' ? data : String(parsed.content ?? parsed.text ?? parsed.delta ?? '') } catch { output += data }
+      }
+    }
+    if (!output.trim()) throw new Error('AI returned an empty report')
+    aiReport.value = output.trim()
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : 'AI report could not be generated') }
+  finally { reportLoading.value = false }
+}
 function exportReport() {
-  ElMessage.success('学情报告 PDF 已生成，可在下载中心查看')
+  if (!aiReport.value) { ElMessage.warning('Generate the report before exporting'); return }
+  const blob = new Blob([aiReport.value], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a'); link.href = url; link.download = `class-${cls.value}-learning-report.md`; link.click()
+  URL.revokeObjectURL(url)
 }
 function genPractice() {
   aiHandoff.outline = '针对薄弱知识点生成专项练习：' + weakLow.value.map((x) => x.point).join('、')
@@ -255,3 +289,7 @@ function genPractice() {
   emit('navigate', 'ai-prep')
 }
 </script>
+
+<style scoped>
+.ai-report { white-space: pre-wrap; font: inherit; line-height: 1.7; margin: 12px 0 0; }
+</style>
