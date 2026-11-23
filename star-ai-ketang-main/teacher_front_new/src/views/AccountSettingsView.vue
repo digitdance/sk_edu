@@ -71,7 +71,7 @@ import { auth, changePassword, logout, saveSettings } from '../stores/auth'
 const pwd = reactive({ old: '', next: '', confirm: '' })
 const pwdMsg = reactive({ text: '', ok: false })
 
-async async async function submitPwd() {
+async function submitPwd() {
   pwdMsg.text = ''
   if (!pwd.old || !pwd.next || !pwd.confirm) {
     pwdMsg.text = '请完整填写原密码与新密码'
